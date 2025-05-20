@@ -52,7 +52,7 @@ async function generateUniqueECDSAKeyPair() {
         continue; // Try again
       }
       
-      // Key is unique, return it
+      // Key is unique, return it with explicit algorithm
       return { publicKey, privateKey, algorithm: "ECDSA" };
     } catch (error) {
       console.error("Error generating ECDSA key pair:", error);
@@ -98,6 +98,11 @@ export async function POST(request) {
     const body = await request.json();
     const { algorithm } = body;
     
+    console.log("Algorithm change request received:", { 
+      userId,
+      requestedAlgorithm: algorithm
+    });
+    
     // Normalize algorithm to uppercase for consistent comparison
     const normalizedAlgorithm = algorithm?.toUpperCase();
     
@@ -109,10 +114,10 @@ export async function POST(request) {
       );
     }
     
-    // Fetch current user to check their existing algorithm
+    // First, fetch the current user to check their existing algorithm
     const currentUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { algorithm: true }
+      select: { algorithm: true, publicKey: true }
     });
     
     if (!currentUser) {
@@ -125,10 +130,23 @@ export async function POST(request) {
     // Normalize current algorithm for consistent comparison
     const currentAlgorithm = currentUser.algorithm?.toUpperCase();
     
+    console.log("Current user algorithm:", { 
+      currentAlgorithm,
+      requestedAlgorithm: normalizedAlgorithm
+    });
+    
     // If user already uses the requested algorithm, no need to change
     if (currentAlgorithm === normalizedAlgorithm) {
+      console.log(`User ${userId} is already using ${normalizedAlgorithm} algorithm, no change needed`);
       return NextResponse.json(
-        { message: `You are already using the ${algorithm} algorithm` },
+        { 
+          message: `You are already using the ${algorithm} algorithm`,
+          algorithm: currentUser.algorithm, // Send back the exact current algorithm string
+          user: {
+            id: userId,
+            algorithm: currentUser.algorithm
+          }
+        },
         { status: 200 }
       );
     }
@@ -150,48 +168,80 @@ export async function POST(request) {
       algorithmToSave = "ECDSA"; // Explicitly set algorithm
     }
     
-    // Always explicitly update with the correct algorithm
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        publicKey: keyPairResult.publicKey,
-        algorithm: algorithmToSave // Use our explicitly defined algorithm value
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        algorithm: true
+    console.log(`Generated key pair with algorithm: ${algorithmToSave}`);
+    
+    // Verify the key pair result contains what we expect
+    if (!keyPairResult.publicKey || !keyPairResult.privateKey) {
+      throw new Error("Generated key pair is missing required keys");
+    }
+    
+    try {
+      // Explicitly record algorithm before update
+      console.log("About to save algorithm:", algorithmToSave);
+      
+      // Directly update the user without transaction
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          publicKey: keyPairResult.publicKey,
+          algorithm: algorithmToSave // Use our explicitly defined algorithm value
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          algorithm: true
+        }
+      });
+      
+      console.log("Database update result:", {
+        userId,
+        algorithmAfterUpdate: updatedUser.algorithm,
+        algorithmRequested: algorithmToSave
+      });
+      
+      // Verify that the update was successful
+      if (updatedUser.algorithm !== algorithmToSave) {
+        console.error("Algorithm mismatch after database update!", {
+          expected: algorithmToSave,
+          actual: updatedUser.algorithm
+        });
+        throw new Error(`Algorithm mismatch after update: expected ${algorithmToSave}, got ${updatedUser.algorithm}`);
       }
-    });
-    
-    // Log the successful algorithm change
-    console.log(`Algorithm successfully changed to ${algorithmToSave} for user ${userId}`, {
-      ...audit,
-      keyFingerprint: crypto.createHash("sha256").update(keyPairResult.publicKey).digest("hex").substring(0, 8)
-    });
-    
-    // Prepare response with consistent algorithm value
-    const response = {
-      message: `Successfully changed signature algorithm to ${algorithmToSave}`,
-      user: {
-        id: updatedUser.id,
-        name: updatedUser.name,
-        email: updatedUser.email,
-        algorithm: updatedUser.algorithm
-      },
-      publicKey: keyPairResult.publicKey,
-      privateKey: keyPairResult.privateKey,
-      // Include algorithm in response for client to verify
-      algorithm: algorithmToSave
-    };
-    
-    return NextResponse.json(response, { status: 200 });
+      
+      // Log the successful algorithm change
+      console.log(`Algorithm successfully changed to ${algorithmToSave} for user ${userId}`);
+      
+      // Generate timestamp for cache busting
+      const timestamp = Date.now();
+      
+      // Prepare response with consistent algorithm value
+      const response = {
+        message: `Successfully changed signature algorithm to ${algorithmToSave}`,
+        user: {
+          id: updatedUser.id,
+          name: updatedUser.name,
+          email: updatedUser.email,
+          algorithm: updatedUser.algorithm
+        },
+        publicKey: keyPairResult.publicKey,
+        privateKey: keyPairResult.privateKey,
+        // Include algorithm in response for client to verify
+        algorithm: algorithmToSave,
+        timestamp: timestamp
+      };
+      
+      return NextResponse.json(response, { status: 200 });
+      
+    } catch (dbError) {
+      console.error("Database update error:", dbError);
+      throw new Error(`Database update failed: ${dbError.message}`);
+    }
   } catch (error) {
     console.error("Error changing signature algorithm:", error);
     
     return NextResponse.json(
-      { message: "Failed to change signature algorithm", error: error.message },
+      { message: `Failed to change signature algorithm: ${error.message}`, error: error.message },
       { status: 500 }
     );
   }

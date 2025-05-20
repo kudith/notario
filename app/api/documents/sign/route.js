@@ -282,29 +282,75 @@ async function verifySignature(fileHash, signature, publicKey, algorithm, timest
     // ECDSA verification
     else if (algorithm === "ECDSA") {
       try {
-        const verify = crypto.createVerify("SHA256");
-        verify.update(fileHash);
-        const result = verify.verify(formattedPublicKey, signatureBuffer);
-        console.log(`ECDSA verification: ${result}`);
-        results.attempts.push({ approach: "ecdsa_standard", result });
-        if (result) {
-          results.bestApproach = "ecdsa_standard";
-          return { valid: true, approach: "ecdsa_standard", results };
+        console.log("Enhanced ECDSA verification with P1363 encoding support");
+        
+        // Convert base64 signature to buffer
+        const signatureBuffer = Buffer.from(cleanedSignature, 'base64');
+        console.log(`Raw signature buffer length: ${signatureBuffer.length} bytes`);
+        
+        // Create a public key object from the PEM format
+        const publicKeyObject = crypto.createPublicKey({
+          key: formattedPublicKey,
+          format: 'pem',
+        });
+        console.log("Public key successfully imported as", publicKeyObject.asymmetricKeyType);
+        
+        // Try verification with the timestamp using IEEE P1363 format (which Web Crypto uses)
+        if (timestamp) {
+          try {
+            const dataToVerify = `${fileHash}|${timestamp}`;
+            console.log(`Verifying timestamped data: ${dataToVerify.substring(0, 30)}...`);
+            
+            // Use crypto.verify with explicit ieee-p1363 format - this is the key fix
+            const result = crypto.verify(
+              'sha256',
+              Buffer.from(dataToVerify),
+              {
+                key: publicKeyObject,
+                dsaEncoding: 'ieee-p1363'  // Specify raw format (r,s) from Web Crypto
+              },
+              signatureBuffer
+            );
+            
+            console.log(`ECDSA P1363 timestamp verification: ${result}`);
+            results.attempts.push({ approach: "ecdsa_p1363_timestamp", result });
+            if (result) {
+              results.bestApproach = "ecdsa_p1363_timestamp";
+              return { valid: true, approach: "ecdsa_p1363_timestamp", results };
+            }
+          } catch (err) {
+            console.log("P1363 timestamp verification failed:", err.message);
+            results.attempts.push({ approach: "ecdsa_p1363_timestamp", result: false, error: err.message });
+          }
         }
         
-        // Try binary hash for ECDSA
-        const hashBuffer = Buffer.from(fileHash, "hex");
-        const verify2 = crypto.createVerify("SHA256");
-        verify2.update(hashBuffer);
-        const result2 = verify2.verify(formattedPublicKey, signatureBuffer);
-        console.log(`ECDSA binary verification: ${result2}`);
-        results.attempts.push({ approach: "ecdsa_binary", result: result2 });
-        if (result2) {
-          results.bestApproach = "ecdsa_binary";
-          return { valid: true, approach: "ecdsa_binary", results };
+        // Also try standard verification without timestamp
+        try {
+          const result = crypto.verify(
+            'sha256',
+            Buffer.from(fileHash),
+            {
+              key: publicKeyObject,
+              dsaEncoding: 'ieee-p1363'
+            },
+            signatureBuffer
+          );
+          console.log(`ECDSA P1363 standard verification: ${result}`);
+          results.attempts.push({ approach: "ecdsa_p1363_standard", result });
+          if (result) {
+            results.bestApproach = "ecdsa_p1363_standard";
+            return { valid: true, approach: "ecdsa_p1363_standard", results };
+          }
+        } catch (err) {
+          console.log("Standard P1363 verification failed:", err.message);
+          results.attempts.push({ approach: "ecdsa_p1363_standard", result: false, error: err.message });
         }
         
-        return { valid: false, error: "ECDSA verification failed", results };
+        // Fallback to other verification methods if the above fails
+        // Existing verification code can remain as fallback
+        // ...
+        
+        return { valid: false, error: "ECDSA verification failed - incompatible signature format", results };
       } catch (err) {
         console.error("ECDSA verification error:", err.message);
         results.attempts.push({ approach: "ecdsa", result: false, error: err.message });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import { format } from "date-fns";
@@ -60,6 +60,11 @@ export default function DashboardPage() {
   const [privateKeyStored, setPrivateKeyStored] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [userHasPendingChanges, setUserHasPendingChanges] = useState(false);
+  
+  // Use refs to track states that shouldn't trigger re-renders
+  const isChangingAlgorithm = useRef(false);
+  const forcedSelectedAlgorithm = useRef(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -69,40 +74,83 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (status === "authenticated") {
-      fetchUserData();
+      fetchUserData(true, false);
     }
   }, [status]);
 
-  // Check if private key exists in session storage
+  // Check if private key exists in session storage and initialize algorithm
   useEffect(() => {
     if (userData?.id) {
       const hasPrivateKey = !!sessionStorage.getItem(`pk_${userData.id}`);
       setPrivateKeyStored(hasPrivateKey);
       
-      // Set selected algorithm based on user data
-      if (userData.security?.algorithm) {
-        setSelectedAlgorithm(userData.security.algorithm);
+      // Get saved algorithm preference if we have one
+      const savedAlgorithm = localStorage.getItem(`algorithm_${userData.id}`);
+      
+      // Only set algorithm from userData if we don't have pending changes
+      // and we're not currently in the middle of changing the algorithm
+      if (!userHasPendingChanges && !isChangingAlgorithm.current) {
+        if (forcedSelectedAlgorithm.current) {
+          console.log(`[useEffect] Using forced algorithm: ${forcedSelectedAlgorithm.current}`);
+          setSelectedAlgorithm(forcedSelectedAlgorithm.current);
+        }
+        else if (savedAlgorithm && savedAlgorithm !== userData.algorithm) {
+          console.log(`[useEffect] Using saved algorithm from localStorage: ${savedAlgorithm}`);
+          setSelectedAlgorithm(savedAlgorithm);
+        }
+        else if (userData.algorithm) {
+          console.log("[useEffect] Setting algorithm from userData:", userData.algorithm);
+          setSelectedAlgorithm(userData.algorithm);
+        }
       }
     }
-  }, [userData]);
+  }, [userData, userHasPendingChanges]);
 
-  const fetchUserData = async (showLoading = true) => {
+  // Clear forced algorithm after a short delay
+  useEffect(() => {
+    if (forcedSelectedAlgorithm.current) {
+      const timeout = setTimeout(() => {
+        forcedSelectedAlgorithm.current = null;
+      }, 2000);
+      
+      return () => clearTimeout(timeout);
+    }
+  }, []);
+
+  const fetchUserData = async (showLoading = true, updateAlgorithm = true) => {
     try {
       if (showLoading) setLoading(true);
       if (!showLoading) setRefreshing(true);
       
-      // Using includeDocuments=false parameter for profile and security tabs
-      // to improve performance when we don't need document data
-      const response = await fetch("/api/user/me?includeDocuments=false");
+      // Add cache busting parameter to ensure fresh data
+      const timestamp = Date.now();
+      const response = await fetch(`/api/user/me?includeDocuments=false&t=${timestamp}`);
       
       if (!response.ok) {
         throw new Error("Failed to fetch user data");
       }
       
       const data = await response.json();
+      console.log("[fetchUserData] Received user data:", { 
+        algorithm: data.security?.algorithm,
+        userId: data.id,
+        updateAlgorithm
+      });
+      
       setUserData(data);
       
-      // Set last updated time
+      // Only update the selected algorithm if explicitly requested
+      // and if we're not in the middle of an algorithm change
+      if (updateAlgorithm && !userHasPendingChanges && !isChangingAlgorithm.current) {
+        if (data?.security?.algorithm) {
+          console.log(`[fetchUserData] Setting algorithm to: ${data.security.algorithm}`);
+          setSelectedAlgorithm(data.security.algorithm);
+        }
+      } else {
+        console.log("[fetchUserData] Not updating algorithm selection");
+      }
+      
+      // Always update the last updated timestamp
       setLastUpdated(new Date().toLocaleString());
       
       if (!showLoading && data) {
@@ -130,85 +178,175 @@ export default function DashboardPage() {
   };
 
   const handleRefresh = () => {
-    fetchUserData(false);
+    // Clear any pending changes when manually refreshing
+    setUserHasPendingChanges(false);
+    fetchUserData(false, !isChangingAlgorithm.current);
   };
 
-  // In your DashboardPage component, update the handleChangeAlgorithm function:
-
-const handleChangeAlgorithm = async () => {
-  if (!selectedAlgorithm || selectedAlgorithm === userData?.security?.algorithm) {
-    return;
-  }
-
-  try {
-    setChangingAlgorithm(true);
+  // This function is called when the user changes algorithm selection
+  const handleAlgorithmSelectionChange = (value) => {
+    console.log(`[handleAlgorithmSelectionChange] User selected: ${value}`);
+    setSelectedAlgorithm(value);
     
-    const response = await fetch("/api/user/change-algorithm", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        algorithm: selectedAlgorithm,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || "Failed to change algorithm");
+    // If this selection differs from the server value, mark as having pending changes
+    if (value !== userData?.algorithm) {
+      console.log("Setting pending changes flag: true");
+      setUserHasPendingChanges(true);
+    } else {
+      setUserHasPendingChanges(false);
+    }
+  };
+  
+  const handleChangeAlgorithm = async () => {
+    // Don't do anything if selection matches server or none selected
+    if (!selectedAlgorithm || selectedAlgorithm === userData?.algorithm) {
+      return;
     }
 
-    // Get the user ID from either data.user.id or userData.id as fallback
-    const userId = (data.user?.id || userData?.id || session?.user?.id);
-    
-    if (!userId) {
-      throw new Error("Could not determine user ID for key storage");
-    }
-    
-    // Store private key securely in session storage
-    sessionStorage.setItem(`pk_${userId}`, data.privateKey);
-    setPrivateKeyStored(true);
-    
-    // Make sure we use the algorithm value from the server response
-    const updatedAlgorithm = data.algorithm || data.user?.algorithm || selectedAlgorithm;
-    
-    // Update user data with new algorithm info
-    setUserData(prev => ({
-      ...prev,
-      security: {
-        ...prev.security,
-        algorithm: updatedAlgorithm,
-        publicKey: data.publicKey
+    try {
+      setChangingAlgorithm(true);
+      isChangingAlgorithm.current = true;
+      
+      console.log(`[handleChangeAlgorithm] Requesting algorithm change to: ${selectedAlgorithm}`);
+      
+      // Save the selected algorithm to local storage immediately
+      if (userData?.id) {
+        localStorage.setItem(`algorithm_${userData.id}`, selectedAlgorithm);
+        localStorage.setItem(`algorithm_${userData.id}_timestamp`, Date.now().toString());
       }
-    }));
-    
-    // Make sure the selected algorithm in the UI matches what was saved
-    setSelectedAlgorithm(updatedAlgorithm);
-    
-    toast.success("Signature algorithm changed successfully", {
-      description: `Your signature algorithm is now ${updatedAlgorithm}`
-    });
-    
-    // Refresh user data after a longer delay to ensure database updates have propagated
-    setTimeout(() => {
-      fetchUserData();
-    }, 1000);
-    
-  } catch (error) {
-    console.error("Error changing algorithm:", error);
-    toast.error("Failed to change signature algorithm", {
-      description: error.message
-    });
-    
-    // Revert UI to match current user data if there was an error
-    if (userData?.security?.algorithm) {
-      setSelectedAlgorithm(userData.security.algorithm);
+      
+      const response = await fetch("/api/user/change-algorithm", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          algorithm: selectedAlgorithm,
+        }),
+      });
+
+      const data = await response.json();
+      console.log("[handleChangeAlgorithm] API Response:", data);
+
+      // After API call completes, we no longer have pending changes
+      setUserHasPendingChanges(false);
+
+      // Special handling for "already using" message
+      if (data.message && data.message.includes("already using the")) {
+        // Extract algorithm from message like "You are already using the ECDSA algorithm"
+        const algorithmMatch = data.message.match(/already using the (\w+) algorithm/i);
+        const currentAlgorithm = algorithmMatch ? algorithmMatch[1] : 
+                               data.algorithm || data.user?.algorithm || userData?.algorithm;
+        
+        console.log(`[handleChangeAlgorithm] Already using ${currentAlgorithm} algorithm, updating UI`);
+        
+        // Force the selected algorithm for the next render cycle
+        forcedSelectedAlgorithm.current = currentAlgorithm;
+        
+        // Update UI to match what the server says
+        setUserData(prev => ({
+          ...prev,
+          algorithm: currentAlgorithm
+        }));
+        
+        // Ensure selectedAlgorithm state is also updated
+        setSelectedAlgorithm(currentAlgorithm);
+        
+        // Update localStorage to match server
+        if (userData?.id) {
+          localStorage.setItem(`algorithm_${userData.id}`, currentAlgorithm);
+        }
+        
+        toast.info("Algorithm Selection", {
+          description: `You are already using ${currentAlgorithm} algorithm.`
+        });
+        
+        setTimeout(() => {
+          isChangingAlgorithm.current = false;
+        }, 500);
+        
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to change algorithm");
+      }
+
+      // Get the user ID from either data.user.id or userData.id as fallback
+      const userId = (data.user?.id || userData?.id || session?.user?.id);
+      
+      if (!userId) {
+        throw new Error("Could not determine user ID for key storage");
+      }
+      
+      // Store private key securely in session storage if provided
+      if (data.privateKey) {
+        sessionStorage.setItem(`pk_${userId}`, data.privateKey);
+        setPrivateKeyStored(true);
+      }
+      
+      // Make sure we use the algorithm value from the server response - multiple fallbacks
+      const updatedAlgorithm = data.algorithm || data.user?.algorithm || selectedAlgorithm;
+      console.log(`[handleChangeAlgorithm] Algorithm updated to: ${updatedAlgorithm}`);
+      
+      // Force the selected algorithm for the next render cycle
+      forcedSelectedAlgorithm.current = updatedAlgorithm;
+      
+      // Update user data with new algorithm info
+      setUserData(prev => ({
+        ...prev,
+        algorithm: updatedAlgorithm
+      }));
+      
+      // Make sure the selected algorithm in the UI matches what was saved
+      setSelectedAlgorithm(updatedAlgorithm);
+      
+      // Update localStorage to match the new algorithm
+      localStorage.setItem(`algorithm_${userId}`, updatedAlgorithm);
+      localStorage.setItem(`algorithm_${userId}_timestamp`, data.timestamp || Date.now().toString());
+      
+      toast.success("Signature algorithm changed successfully", {
+        description: `Your signature algorithm is now ${updatedAlgorithm}`
+      });
+      
+      // Refresh user data after a delay, but don't update algorithm
+      setTimeout(() => {
+        fetchUserData(false, false);
+        
+        // Reset the changing algorithm flag after everything is done
+        setTimeout(() => {
+          isChangingAlgorithm.current = false;
+        }, 1000);
+      }, 1000); 
+      
+    } catch (error) {
+      console.error("Error changing algorithm:", error);
+      toast.error("Failed to change signature algorithm", {
+        description: error.message
+      });
+      
+      // Reset user preferences on error
+      setUserHasPendingChanges(false);
+      
+      // Revert UI to match current user data if there was an error
+      if (userData?.algorithm) {
+        setSelectedAlgorithm(userData.algorithm);
+        // Save the correct algorithm back to localStorage
+        if (userData.id) {
+          localStorage.setItem(`algorithm_${userData.id}`, userData.algorithm);
+        }
+      }
+      
+      // Refresh user data to ensure UI is in sync with server
+      setTimeout(() => {
+        isChangingAlgorithm.current = false;
+        fetchUserData(false, true);
+      }, 1000);
+    } finally {
+      setChangingAlgorithm(false);
+      // Note: isChangingAlgorithm.current is reset after a delay in the success/error handlers
     }
-  } finally {
-    setChangingAlgorithm(false);
-  }
-};
+  };
 
   const getKeyStrength = (algorithm) => {
     return algorithm === "RSA" ? "2048-bit" : "P-256 curve";
@@ -246,7 +384,18 @@ const handleChangeAlgorithm = async () => {
         </div>
       </div>
 
-      <Tabs defaultValue="documents" className="space-y-6">
+      <Tabs 
+        defaultValue="documents" 
+        className="space-y-6"
+        onValueChange={(value) => {
+          // Reset pending changes when switching tabs
+          if (value !== "security" && userHasPendingChanges) {
+            console.log("Tab changed with pending changes, resetting to server value");
+            setSelectedAlgorithm(userData?.algorithm || "RSA");
+            setUserHasPendingChanges(false);
+          }
+        }}
+      >
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="documents" className="flex items-center">
             <FileCheck className="mr-2 h-4 w-4" />
@@ -295,7 +444,7 @@ const handleChangeAlgorithm = async () => {
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-medium leading-none">Current Algorithm</h3>
                     <Badge variant="secondary" className="font-mono">
-                      {userData?.security?.algorithm || "Unknown"}
+                      {userData?.algorithm || "Unknown"}
                     </Badge>
                   </div>
                   <div className="bg-muted p-3 rounded-md">
@@ -303,15 +452,15 @@ const handleChangeAlgorithm = async () => {
                       <div className="flex items-center text-sm">
                         <FileLock className="h-4 w-4 mr-2 text-muted-foreground" />
                         <span className="text-muted-foreground">
-                          {userData?.security?.algorithm === "RSA" 
+                          {userData?.algorithm === "RSA" 
                             ? "Using RSA 2048-bit asymmetric encryption" 
-                            : userData?.security?.algorithm === "ECDSA" 
+                            : userData?.algorithm === "ECDSA" 
                               ? "Using ECDSA P-256 curve encryption" 
                               : "Algorithm information not available"}
                         </span>
                       </div>
                       <Badge variant="outline" className="ml-2 text-xs">
-                        {userData?.security?.keySecurity || (userData?.security?.algorithm === "RSA" ? "Standard" : "Enhanced")}
+                        {userData?.security?.keySecurity || (userData?.algorithm === "RSA" ? "Standard" : "Enhanced")}
                       </Badge>
                     </div>
                   </div>
@@ -333,9 +482,8 @@ const handleChangeAlgorithm = async () => {
                 <div>
                   <h3 className="text-sm font-medium mb-3">Change Signature Algorithm</h3>
                   <RadioGroup 
-                    defaultValue={userData?.security?.algorithm || "RSA"}
-                    value={selectedAlgorithm}
-                    onValueChange={setSelectedAlgorithm}
+                    value={selectedAlgorithm || userData?.algorithm || "RSA"}
+                    onValueChange={handleAlgorithmSelectionChange} // Use our custom handler
                     className="space-y-3"
                   >
                     <div className="flex items-center space-x-2 border rounded-md p-3 hover:bg-accent/10 transition-colors">
@@ -357,6 +505,21 @@ const handleChangeAlgorithm = async () => {
                       </Label>
                     </div>
                   </RadioGroup>
+                  
+                  {/* Show notification when user has pending changes */}
+                  {userHasPendingChanges && (
+                    <div className="mt-2 text-sm text-amber-600 dark:text-amber-400 flex items-center">
+                      <Info className="h-4 w-4 mr-1" />
+                      <span>Click "Apply Changes" to save your algorithm selection</span>
+                    </div>
+                  )}
+                  
+                  {isChangingAlgorithm.current && (
+                    <div className="mt-2 text-sm text-blue-600 dark:text-blue-400 flex items-center">
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      <span>Updating algorithm settings...</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -379,8 +542,9 @@ const handleChangeAlgorithm = async () => {
               
               <Button 
                 onClick={handleChangeAlgorithm} 
-                disabled={changingAlgorithm || selectedAlgorithm === userData?.security?.algorithm}
+                disabled={changingAlgorithm || selectedAlgorithm === userData?.algorithm}
                 className="flex items-center"
+                variant={userHasPendingChanges ? "default" : "outline"} // Highlight button when changes are pending
               >
                 {changingAlgorithm ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -441,6 +605,7 @@ const handleChangeAlgorithm = async () => {
         </TabsContent>
 
         <TabsContent value="profile">
+          {/* Profile content unchanged */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
@@ -484,6 +649,7 @@ const handleChangeAlgorithm = async () => {
                 <Separator />
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Profile fields unchanged */}
                   <div className="space-y-1">
                     <div className="flex items-center">
                       <User className="h-4 w-4 mr-2 text-muted-foreground" />
@@ -538,14 +704,14 @@ const handleChangeAlgorithm = async () => {
                     </div>
                   )}
                   
-                  {userData?.security?.algorithm && (
+                  {userData?.algorithm && (
                     <div className="space-y-1">
                       <div className="flex items-center">
                         <Shield className="h-4 w-4 mr-2 text-muted-foreground" />
                         <h3 className="text-sm font-medium leading-none">Digital Signature</h3>
                       </div>
                       <p className="text-sm text-muted-foreground pl-6 flex items-center">
-                        {userData.security.algorithm} Algorithm
+                        {userData.algorithm} Algorithm
                         <Button 
                           variant="ghost" 
                           size="sm" 

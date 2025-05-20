@@ -1,0 +1,24 @@
+# @name login
+POST /api/auth/signin/credentials HTTP/1.1
+Host: localhost:3000
+Content-Type: application/json
+
+{
+  "email": "user@example.com", 
+  "password": "password123"
+}
+
+###
+
+# @name getUserProfile
+# @description Get user profile
+# @auth Bearer
+# @param aadToken string The AAD token to use for authentication
+# @response 200 application/json
+
+@{{$aadToken}}
+GET /api/user/me HTTP/1.1
+Host: localhost:3000
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {token}

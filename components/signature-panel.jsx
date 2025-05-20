@@ -120,6 +120,7 @@ async function signData(privateKey, data, algorithm = "RSA") {
     const encodedData = encoder.encode(data);
     
     if (algorithm === "ECDSA") {
+      // For ECDSA, get raw signature and ensure proper formatting
       const signature = await window.crypto.subtle.sign(
         {
           name: "ECDSA",
@@ -129,9 +130,15 @@ async function signData(privateKey, data, algorithm = "RSA") {
         encodedData
       );
       
+      // Log information to help with debugging
+      console.log(`Generated ECDSA signature of ${encodedData.length} bytes of data`);
+      console.log(`Raw signature size: ${signature.byteLength} bytes`);
+      
+      // Return raw signature in base64 format
+      // Important: this is in IEEE P1363 format (r,s concatenated)
       return btoa(String.fromCharCode.apply(null, new Uint8Array(signature)));
     } else {
-      // Default to RSA
+      // Default to RSA (unchanged)
       const signature = await window.crypto.subtle.sign(
         {
           name: "RSASSA-PKCS1-v1_5",
