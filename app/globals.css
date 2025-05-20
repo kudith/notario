@@ -1,26 +1,229 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-fraunces);
+  --font-mono: var(--font-plex-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  /* Four-color minimalist palette */
+  --radius: 0.5rem; /* Consistent, moderate border radius */
+  --background: rgb(245, 244, 237); /* Cream background */
+  --foreground: rgb(31, 30, 29); /* Almost black text */
+  --card: rgb(240, 239, 232); /* Slightly darker cream for cards */
+  --card-foreground: rgb(31, 30, 29);
+  --popover: rgb(240, 239, 232);
+  --popover-foreground: rgb(31, 30, 29);
+  --primary: rgb(216, 119, 86); /* Terracotta accent */
+  --primary-foreground: rgb(255, 255, 255);
+  --secondary: rgb(235, 234, 227); /* Lighter version of background */
+  --secondary-foreground: rgb(31, 30, 29);
+  --muted: rgb(235, 234, 227);
+  --muted-foreground: rgb(102, 101, 100); /* Gray-brown tone */
+  --accent: rgb(190, 185, 170); /* Darker cream accent */
+  --accent-foreground: rgb(31, 30, 29);
+  --destructive: rgb(180, 40, 40);
+  --border: rgba(31, 30, 29, 0.12);
+  --input: rgba(31, 30, 29, 0.18);
+  --ring: rgb(216, 119, 86);
+  --chart-1: rgb(216, 119, 86);
+  --chart-2: rgb(190, 185, 170);
+  --chart-3: rgb(189, 146, 120);
+  --chart-4: rgb(205, 200, 185);
+  --chart-5: rgb(205, 181, 169);
+  --sidebar: rgb(240, 239, 232);
+  --sidebar-foreground: rgb(31, 30, 29);
+  --sidebar-primary: rgb(216, 119, 86);
+  --sidebar-primary-foreground: rgb(255, 255, 255);
+  --sidebar-accent: rgb(235, 234, 227);
+  --sidebar-accent-foreground: rgb(31, 30, 29);
+  --sidebar-border: rgba(31, 30, 29, 0.12);
+  --sidebar-ring: rgb(216, 119, 86);
+}
+
+.dark {
+  /* Dark version of the four-color palette */
+  --background: rgb(31, 30, 29);
+  --foreground: rgb(245, 244, 237);
+  --card: rgb(42, 41, 40);
+  --card-foreground: rgb(245, 244, 237);
+  --popover: rgb(42, 41, 40);
+  --popover-foreground: rgb(245, 244, 237);
+  --primary: rgb(216, 119, 86);
+  --primary-foreground: rgb(255, 255, 255);
+  --secondary: rgb(55, 54, 53);
+  --secondary-foreground: rgb(245, 244, 237);
+  --muted: rgb(55, 54, 53);
+  --muted-foreground: rgb(185, 184, 177);
+  --accent: rgb(170, 165, 150); /* Darker cream in dark mode */
+  --accent-foreground: rgb(31, 30, 29);
+  --destructive: rgb(220, 60, 60);
+  --border: rgba(245, 244, 237, 0.12);
+  --input: rgba(245, 244, 237, 0.18);
+  --ring: rgb(216, 119, 86);
+  --chart-1: rgb(216, 119, 86);
+  --chart-2: rgb(170, 165, 150);
+  --chart-3: rgb(189, 146, 120);
+  --chart-4: rgb(155, 150, 135);
+  --chart-5: rgb(205, 181, 169);
+  --sidebar: rgb(42, 41, 40);
+  --sidebar-foreground: rgb(245, 244, 237);
+  --sidebar-primary: rgb(216, 119, 86);
+  --sidebar-primary-foreground: rgb(255, 255, 255);
+  --sidebar-accent: rgb(55, 54, 53);
+  --sidebar-accent-foreground: rgb(245, 244, 237);
+  --sidebar-border: rgba(245, 244, 237, 0.12);
+  --sidebar-ring: rgb(216, 119, 86);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "ss01", "ss02", "ss03", "ss04", "liga", "kern";
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-medium tracking-tight;
+  }
+  
+  h1 {
+    @apply text-3xl sm:text-4xl font-bold;
+  }
+  
+  h2 {
+    @apply text-2xl sm:text-3xl font-bold;
+  }
+  
+  h3 {
+    @apply text-xl sm:text-2xl font-semibold;
+  }
+  
+  p {
+    @apply leading-relaxed;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Button styles with terracotta primary */
+.btn-primary {
+  @apply rounded-md bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 font-medium transition-colors;
+}
+
+.btn-secondary {
+  @apply rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border px-4 py-2 font-medium transition-colors;
+}
+
+.btn-outline {
+  @apply rounded-md border border-primary/30 bg-transparent hover:bg-primary/5 px-4 py-2 font-medium text-primary transition-colors;
+}
+
+/* Content container */
+.content-container {
+  @apply max-w-5xl mx-auto px-4 sm:px-6 py-8;
+}
+
+/* Card styling */
+.document-card {
+  @apply bg-card text-card-foreground p-6 rounded-md border border-border;
+}
+
+/* Form input style */
+.form-input {
+  @apply w-full bg-background border border-input rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all;
+}
+
+/* Custom styles for hash display */
+.hash-code {
+  font-family: var(--font-plex-mono, 'IBM Plex Mono'), monospace !important;
+  @apply bg-secondary px-3 py-2 rounded-md overflow-x-auto;
+}
+
+/* Code blocks */
+code {
+  @apply font-mono text-sm bg-secondary px-1.5 py-0.5 rounded-md;
+}
+
+pre {
+  @apply font-mono text-sm bg-secondary p-4 rounded-md overflow-x-auto my-4;
+}
+
+/* Links
+a:not(.btn-primary):not(.btn-secondary):not(.btn-outline) {
+  @apply text-accent;
+} */
+
+/* QR code element */
+.qr-preview {
+  @apply bg-white p-3 rounded-md inline-block border border-border;
+}
+
+/* Status indicators */
+.status-pill {
+  @apply px-3 py-1 rounded-md text-sm font-medium inline-flex items-center;
+}
+
+.status-verified {
+  @apply bg-primary/10 text-primary border border-primary/50;
+}
+
+.status-pending {
+  @apply bg-accent/20 text-accent;
+}
+
+/* Feature icon wrapper */
+.feature-icon {
+  @apply w-10 h-10 rounded-md bg-primary/10 text-primary flex items-center justify-center mb-4;
+}
+
+/* Data grid */
+.data-grid {
+  @apply grid grid-cols-2 gap-2 text-sm;
+}
+
+.data-grid dt {
+  @apply text-muted-foreground;
+}
+
+.data-grid dd {
+  @apply font-medium;
 }

@@ -1,0 +1,484 @@
+"use client";
+
+import { useState } from "react";
+import DocumentVerifier from "@/components/document-verifier";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { verifyDocumentByIdentifier } from "@/lib/document-service";
+import { Loader2, Search, FileCheck, FileText, Calendar, UserCircle, ExternalLink, AlignLeft } from "lucide-react";
+import { toast, Toaster } from "sonner";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
+
+export default function VerifyPage() {
+  const [certificateId, setCertificateId] = useState("");
+  const [activeTab, setActiveTab] = useState("upload");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResult, setSearchResult] = useState(null);
+
+  const handleCertificateSearch = async () => {
+    if (!certificateId.trim()) {
+      toast.error("Please enter a certificate ID");
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const result = await verifyDocumentByIdentifier(certificateId);
+      setSearchResult(result);
+      
+      if (!result.verified) {
+        toast.error("Certificate not found", {
+          description: "No document with this certificate ID was found in our system."
+        });
+      }
+    } catch (error) {
+      console.error("Certificate search error:", error);
+      toast.error("Search failed", {
+        description: error.message || "Could not search for the certificate."
+      });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Format date for display
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Unknown';
+    try {
+      return new Date(dateString).toLocaleString();
+    } catch (e) {
+      return dateString;
+    }
+  };
+
+  return (
+    <div className="content-container">
+      <div className="flex flex-col items-center mb-8 text-center">
+        <div className="feature-icon mb-4">
+          <FileCheck className="h-6 w-6" />
+        </div>
+        <h1 className="text-3xl font-bold tracking-tight">Document Verification</h1>
+        <p className="text-muted-foreground max-w-2xl mt-2">
+          Verify the authenticity of documents signed with Notario. Upload a document or enter a certificate ID to verify.
+        </p>
+      </div>
+      
+      <Card className="document-card mb-8">
+        <CardHeader>
+          <CardTitle>Verify Document</CardTitle>
+          <CardDescription>
+            Choose how you want to verify your document
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="upload">Upload Document</TabsTrigger>
+              <TabsTrigger value="certificate">Certificate ID</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="upload" className="space-y-4 pt-4">
+              <DocumentVerifier />
+            </TabsContent>
+            
+            <TabsContent value="certificate" className="space-y-4 pt-4">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Enter certificate ID (e.g. CERT-1234567890)"
+                  value={certificateId}
+                  onChange={(e) => setCertificateId(e.target.value)}
+                  className="form-input flex-1"
+                />
+                <Button 
+                  onClick={handleCertificateSearch} 
+                  disabled={isSearching}
+                  className="btn-primary"
+                >
+                  {isSearching ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Search className="h-4 w-4 mr-2" />
+                  )}
+                  Verify
+                </Button>
+              </div>
+              
+              {searchResult && searchResult.verified && (
+                <Tabs defaultValue="basic" className="mt-4">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="basic">Basic Info</TabsTrigger>
+                    <TabsTrigger value="document">Document</TabsTrigger>
+                    <TabsTrigger value="signer">Signer</TabsTrigger>
+                  </TabsList>
+                  
+                  {/* Basic Tab */}
+                  <TabsContent value="basic" className="space-y-4 mt-4">
+                    <div className="bg-card border border-primary/20 p-4 rounded-md">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="feature-icon w-8 h-8 mb-0">
+                          <FileCheck className="h-4 w-4" />
+                        </div>
+                        <h3 className="text-xl font-medium text-primary">Document Verified</h3>
+                      </div>
+                      <p className="text-muted-foreground mb-4">
+                        This document is authentic and has been signed using Notario.
+                      </p>
+                      
+                      <div className="data-grid mt-4">
+                        <dt>Certificate ID:</dt>
+                        <dd className="font-mono text-sm">{searchResult.documentInfo.certificateId}</dd>
+                        
+                        <dt>Document Name:</dt>
+                        <dd>{searchResult.documentInfo.fileName}</dd>
+                        
+                        <dt>Signed Date:</dt>
+                        <dd>{formatDate(searchResult.documentInfo.timestamp)}</dd>
+                        
+                        {searchResult.documentInfo.metadata?.documentType && (
+                          <>
+                            <dt>Document Type:</dt>
+                            <dd className="capitalize">
+                              {searchResult.documentInfo.metadata.documentType}
+                              {searchResult.documentInfo.metadata.documentSubject ? 
+                                ` - ${searchResult.documentInfo.metadata.documentSubject}` : ''}
+                            </dd>
+                          </>
+                        )}
+                        
+                        <dt>Hash Algorithm:</dt>
+                        <dd>{searchResult.documentInfo.algorithm || "SHA-256"}</dd>
+                      </div>
+                      
+                      {searchResult.documentInfo.signedPdfUrl && (
+                        <div className="mt-6">
+                          <Button asChild variant="outline" className="btn-outline w-full">
+                            <a 
+                              href={searchResult.documentInfo.signedPdfUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-center"
+                            >
+                              <ExternalLink className="h-4 w-4 mr-2" />
+                              View Signed Document
+                            </a>
+                          </Button>
+                        </div>
+                      )}
+                      
+                      <div className="mt-4 text-center">
+                        <Button 
+                          variant="link" 
+                          onClick={() => window.location.href = `/verify/${searchResult.documentInfo.certificateId}`}
+                          className="text-primary"
+                        >
+                          View Full Verification Details
+                        </Button>
+                      </div>
+                    </div>
+                  </TabsContent>
+                  
+                  {/* Document Tab */}
+                  <TabsContent value="document" className="space-y-4 mt-4">
+                    <div className="document-card">
+                      <h3 className="font-medium text-lg flex items-center mb-4">
+                        <FileText className="h-5 w-5 mr-2 text-primary" />
+                        Document Details
+                      </h3>
+                      
+                      <div className="data-grid">
+                        {searchResult.documentInfo.metadata?.documentSubject && (
+                          <>
+                            <dt>Subject:</dt>
+                            <dd>{searchResult.documentInfo.metadata.documentSubject}</dd>
+                          </>
+                        )}
+                        
+                        {searchResult.documentInfo.metadata?.documentNumber && (
+                          <>
+                            <dt>Document Number:</dt>
+                            <dd>{searchResult.documentInfo.metadata.documentNumber}</dd>
+                          </>
+                        )}
+                        
+                        {searchResult.documentInfo.metadata?.issueDate && (
+                          <>
+                            <dt>Issue Date:</dt>
+                            <dd>{searchResult.documentInfo.metadata.issueDate}</dd>
+                          </>
+                        )}
+                        
+                        {searchResult.documentInfo.metadata?.pdfInfo && (
+                          <>
+                            <dt>Pages:</dt>
+                            <dd>
+                              {searchResult.documentInfo.metadata.pdfInfo.pageCount || 'Unknown'}
+                            </dd>
+                            
+                            {searchResult.documentInfo.metadata.pdfInfo.title && (
+                              <>
+                                <dt>Title:</dt>
+                                <dd>
+                                  {searchResult.documentInfo.metadata.pdfInfo.title}
+                                </dd>
+                              </>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* AI Analysis Summary */}
+                    {searchResult.documentInfo.metadata?.aiAnalysis && (
+                      <div className="document-card">
+                        <Accordion type="single" collapsible>
+                          <AccordionItem value="ai-summary">
+                            <AccordionTrigger className="flex items-center gap-2">
+                              <span className="flex items-center">
+                                <AlignLeft className="h-4 w-4 mr-2 text-primary" />
+                                AI Document Analysis
+                              </span>
+                              {searchResult.documentInfo.metadata.aiAnalysis.enabled && 
+                                <Badge variant="outline" className="status-verified ml-2">
+                                  AI Analyzed
+                                </Badge>
+                              }
+                            </AccordionTrigger>
+                            <AccordionContent className="space-y-4 pt-3">
+                              {/* Summary */}
+                              {searchResult.documentInfo.metadata.aiAnalysis.summary && (
+                                <div className="space-y-1 pb-3 border-b border-border">
+                                  <h4 className="text-sm font-medium">Document Summary</h4>
+                                  <p className="text-sm">
+                                    {searchResult.documentInfo.metadata.aiAnalysis.summary}
+                                  </p>
+                                </div>
+                              )}
+                              
+                              {/* Important Metadata */}
+                              {searchResult.documentInfo.metadata.aiAnalysis.importantMetadata && 
+                              searchResult.documentInfo.metadata.aiAnalysis.importantMetadata.length > 0 && (
+                                <div className="space-y-1 pb-3 border-b border-border">
+                                  <h4 className="text-sm font-medium">Key Information</h4>
+                                  <ul className="list-disc pl-5 text-sm space-y-1">
+                                    {searchResult.documentInfo.metadata.aiAnalysis.importantMetadata.map((item, i) => (
+                                      <li key={i}>{item}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {/* Parties Information */}
+                              {searchResult.documentInfo.metadata.aiAnalysis.parties && 
+                              searchResult.documentInfo.metadata.aiAnalysis.parties.length > 0 && (
+                                <div className="space-y-1 pb-3 border-b border-border">
+                                  <h4 className="text-sm font-medium">Document Parties</h4>
+                                  <div className="bg-secondary p-3 rounded-md">
+                                    <ul className="list-disc pl-5 text-sm space-y-1">
+                                      {searchResult.documentInfo.metadata.aiAnalysis.parties.map((party, i) => (
+                                        <li key={i}>
+                                          <strong>{party.nama}</strong>
+                                          {party.peran && ` - ${party.peran}`}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Date Information */}
+                              <div className="space-y-1 pb-3 border-b border-border">
+                                <h4 className="text-sm font-medium">Document Dates</h4>
+                                <div className="data-grid">
+                                  <dt>Issue Date:</dt>
+                                  <dd>{searchResult.documentInfo.metadata.aiAnalysis.issueDate || "Not specified"}</dd>
+                                  
+                                  <dt>Expiry Date:</dt>
+                                  <dd>{searchResult.documentInfo.metadata.aiAnalysis.expireDate || "Not applicable"}</dd>
+                                </div>
+                              </div>
+                              
+                              {/* Keywords */}
+                              <div className="space-y-1">
+                                <h4 className="text-sm font-medium">Keywords</h4>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {searchResult.documentInfo.metadata.aiAnalysis.keywords && 
+                                   searchResult.documentInfo.metadata.aiAnalysis.keywords.length > 0 ? (
+                                    searchResult.documentInfo.metadata.aiAnalysis.keywords.map((keyword, i) => (
+                                      <Badge key={i} variant="secondary" className="text-xs bg-secondary text-secondary-foreground">
+                                        {keyword}
+                                      </Badge>
+                                    ))
+                                  ) : (
+                                    <span className="text-sm text-muted-foreground">No keywords extracted</span>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              {/* View Full Details Button */}
+                              <div className="pt-2 mt-2 border-t border-border text-center">
+                                <Button
+                                  variant="outline" 
+                                  className="btn-outline"
+                                  onClick={() => window.location.href = `/verify/${searchResult.documentInfo.certificateId}`}
+                                >
+                                  View Full Document Details
+                                </Button>
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
+                      </div>
+                    )}
+                  </TabsContent>
+                  
+                  {/* Signer Tab */}
+                  <TabsContent value="signer" className="space-y-4 mt-4">
+                    <div className="document-card">
+                      <h3 className="font-medium text-lg flex items-center mb-4">
+                        <UserCircle className="h-5 w-5 mr-2 text-primary" />
+                        Signer Information
+                      </h3>
+                      
+                      <div className="data-grid">
+                        {/* Get signer information from metadata.signer or from documentInfo.signer */}
+                        {searchResult.documentInfo.metadata?.signer ? (
+                          <>
+                            <dt>Name:</dt>
+                            <dd>{searchResult.documentInfo.metadata.signer.name}</dd>
+                            
+                            <dt>Email:</dt>
+                            <dd>{searchResult.documentInfo.metadata.signer.email}</dd>
+                            
+                            <dt>Signed on:</dt>
+                            <dd>{formatDate(searchResult.documentInfo.metadata.signer.signedAt)}</dd>
+                          </>
+                        ) : searchResult.documentInfo.signer ? (
+                          <>
+                            <dt>Name:</dt>
+                            <dd>{searchResult.documentInfo.signer.name}</dd>
+                            
+                            <dt>Email:</dt>
+                            <dd>{searchResult.documentInfo.signer.email}</dd>
+                            
+                            {searchResult.documentInfo.signer.institution && (
+                              <>
+                                <dt>Institution:</dt>
+                                <dd>{searchResult.documentInfo.signer.institution}</dd>
+                              </>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-muted-foreground col-span-2">No signer information available</p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Document Parties from AI Analysis */}
+                    {searchResult.documentInfo.metadata?.aiAnalysis?.parties && 
+                     searchResult.documentInfo.metadata.aiAnalysis.parties.length > 0 && (
+                      <div className="document-card">
+                        <Accordion type="single" collapsible>
+                          <AccordionItem value="parties">
+                            <AccordionTrigger>Document Parties</AccordionTrigger>
+                            <AccordionContent>
+                              <ul className="list-disc pl-5 text-sm space-y-1">
+                                {searchResult.documentInfo.metadata.aiAnalysis.parties.map((party, i) => (
+                                  <li key={i}>
+                                    <strong>{party.nama}</strong>
+                                    {party.peran && ` - ${party.peran}`}
+                                  </li>
+                                ))}
+                              </ul>
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
+                      </div>
+                    )}
+                    
+                    <div className="text-center">
+                      <Button 
+                        variant="outline"
+                        className="btn-outline"
+                        onClick={() => window.location.href = `/verify/${searchResult.documentInfo.certificateId}`}
+                      >
+                        View Full Certificate Details
+                      </Button>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              )}
+              
+              {searchResult && !searchResult.verified && (
+                <Card className="mt-4 border border-destructive/30 bg-destructive/5">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-destructive">
+                      Document Not Found
+                    </CardTitle>
+                    <CardDescription>
+                      No document with this certificate ID was found in our system.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm">
+                      Please check the certificate ID and try again. If you believe this is an error,
+                      please contact support.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+        <CardFooter className="border-t border-border pt-4 text-sm text-muted-foreground">
+          <p>
+            Notario uses advanced cryptographic techniques to ensure document authenticity and integrity.
+          </p>
+        </CardFooter>
+      </Card>
+      
+      <Card className="document-card">
+        <CardHeader>
+          <CardTitle>How Verification Works</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 border border-border rounded-md bg-card">
+              <div className="feature-icon">
+                <FileText className="h-5 w-5" />
+              </div>
+              <h3 className="font-medium mb-2">1. Document Hash</h3>
+              <p className="text-sm text-muted-foreground">
+                Each document is processed with a secure SHA-256 algorithm to generate a unique cryptographic fingerprint.
+              </p>
+            </div>
+            
+            <div className="p-4 border border-border rounded-md bg-card">
+              <div className="feature-icon">
+                <UserCircle className="h-5 w-5" />
+              </div>
+              <h3 className="font-medium mb-2">2. Digital Signature</h3>
+              <p className="text-sm text-muted-foreground">
+                The document is cryptographically signed using RSA public/private key pairs to ensure authenticity.
+              </p>
+            </div>
+            
+            <div className="p-4 border border-border rounded-md bg-card">
+              <div className="feature-icon">
+                <Search className="h-5 w-5" />
+              </div>
+              <h3 className="font-medium mb-2">3. Secure Database</h3>
+              <p className="text-sm text-muted-foreground">
+                Document signatures and metadata are securely stored in our database for future verification and validation.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      
+      <Toaster richColors position="top-center" />
+    </div>
+  );
+}
