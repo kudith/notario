@@ -1110,7 +1110,7 @@ export default function SignPage() {
                             Certificate ID
                           </h4>
                           <p className="text-muted-foreground text-xs">
-                            Unique identifier that links to the secure registry record of this document's signature.
+                            Unique identifier that links to the secure registry record of this document&apos;s signature.
                           </p>
                         </div>
                         
@@ -1165,7 +1165,7 @@ export default function SignPage() {
                   </div>
                   <h3 className="text-lg font-medium mb-2">No Signed Document</h3>
                   <p className="text-muted-foreground mb-6 max-w-md">
-                    You haven't signed a document yet. Please upload a document and complete the signing process.
+                    You haven&apos;t signed a document yet. Please upload a document and complete the signing process.
                   </p>
                   <Button onClick={() => setActiveTab("upload")}>
                     Upload Document
