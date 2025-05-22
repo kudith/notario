@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSession } from "next-auth/react";
-import { redirect, useSearchParams } from "next/navigation";
+import { redirect } from "next/navigation";
 import { AuthTabs } from "@/components/auth-tabs";
 import {
   Dialog,
@@ -19,29 +19,38 @@ import { Button } from "@/components/ui/button";
 import { AlertCircle, Loader2, Mail, CheckCircle, ArrowRight, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
+// Extract the part that uses useSearchParams to a client component
+function EmailVerificationHandler({ onVerificationNeeded }) {
+  const [searchParams, setSearchParams] = useState(null);
+  
+  useEffect(() => {
+    // Safe access to URLSearchParams in client side
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const error = urlParams.get("error");
+      if (error === "EMAIL_NOT_VERIFIED") {
+        const email = urlParams.get("email") || "";
+        onVerificationNeeded(email);
+      }
+      setSearchParams(urlParams);
+    }
+  }, [onVerificationNeeded]);
+  
+  return null; // This component doesn't render anything
+}
+
 export default function LoginPage() {
   const { status } = useSession();
-  const searchParams = useSearchParams();
   const [verificationEmail, setVerificationEmail] = useState("");
   const [showVerificationDialog, setShowVerificationDialog] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
 
-  // Handle verification needed from AuthTabs
+  // Handle verification needed from AuthTabs or URL params
   const handleVerificationRequired = (email) => {
     setVerificationEmail(email);
     setShowVerificationDialog(true);
   };
-
-  // Check for verification error in URL
-  useEffect(() => {
-    const error = searchParams.get("error");
-    if (error === "EMAIL_NOT_VERIFIED") {
-      const email = searchParams.get("email") || "";
-      setVerificationEmail(email);
-      setShowVerificationDialog(true);
-    }
-  }, [searchParams]);
 
   // Reset success state when dialog closes
   const handleDialogChange = (open) => {
@@ -112,7 +121,10 @@ export default function LoginPage() {
             </p>
           </div>
           
-          <AuthTabs onVerificationRequired={handleVerificationRequired} />
+          <Suspense fallback={<div className="w-full max-w-md mx-auto p-8 text-center">Loading authentication form...</div>}>
+            <AuthTabs onVerificationRequired={handleVerificationRequired} />
+            <EmailVerificationHandler onVerificationNeeded={handleVerificationRequired} />
+          </Suspense>
         </div>
       </div>
       
@@ -131,6 +143,7 @@ export default function LoginPage() {
             </DialogDescription>
           </DialogHeader>
 
+          {/* Rest of the dialog content remains the same */}
           {!resendSuccess ? (
             <div className="space-y-6 py-2 px-2">
               <div className="flex items-start gap-3 bg-muted/40 rounded-lg p-3">

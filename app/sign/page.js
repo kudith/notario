@@ -81,7 +81,7 @@ export default function SignPage() {
         { progress: 70, stage: 'Generating certificate', detail: 'Creating unique certificate identifier' },
         { progress: 80, stage: 'Securing document', detail: 'Finalizing signed PDF with tamper protection' },
         { progress: 90, stage: 'Uploading to secure storage', detail: 'Saving document to encrypted cloud storage' },
-        { progress: 95, stage: 'Finalizing document', detail: 'Recording signature in blockchain registry' }
+        { progress: 95, stage: 'Registering document', detail: 'Recording signature in secure registry' }
       ];
       
       let currentStep = 0;
@@ -108,18 +108,16 @@ export default function SignPage() {
             timestamp: new Date().toISOString()
           }]);
         } else {
-          // Only clear if we're not actually done (real process will set to 100)
-          if (signingProgress < 100) {
-            clearInterval(progressInterval);
-          }
+          // Don't clear interval - let the actual process set 100%
+          // We'll just stop adding new steps
         }
-      }, 1200); // More realistic timing
+      }, 1500); // Slower timing to make progress more realistic
     }
 
     return () => {
       if (progressInterval) clearInterval(progressInterval);
     };
-  }, [isSignDialogOpen, isProcessing, session?.user?.security?.algorithm, signingProgress]);
+  }, [isSignDialogOpen, isProcessing, session?.user?.security?.algorithm]);
 
   // Handle file upload with AI analysis
   const handleFileUpload = async (uploadedFile, providedHash = null, analysisData = null) => {
@@ -380,9 +378,14 @@ export default function SignPage() {
           timestamp: new Date().toISOString()
         }]);
         
+        // Add a longer delay before closing dialog
         setTimeout(() => {
-          setIsSignDialogOpen(false);
-          setActiveTab("download");
+          setIsProcessing(false);
+          
+          setTimeout(() => {
+            setIsSignDialogOpen(false);
+            setActiveTab("download");
+          }, 2000);
         }, 1500);
         
         return;
@@ -414,15 +417,20 @@ export default function SignPage() {
         throw new Error("Server returned an invalid response");
       }
       
-      // Delay before closing the dialog and switching to download tab
+      // First stop processing to show success state
       setTimeout(() => {
-        setIsSignDialogOpen(false);
-        setActiveTab("download");
+        setIsProcessing(false);
         
-        toast.success("Document signed successfully", {
-          description: `Certificate ID: ${result.certificateId || result.savedDoc.id}`
-        });
-      }, 2000);
+        // Wait additional time before closing dialog and switching tab
+        setTimeout(() => {
+          setIsSignDialogOpen(false);
+          setActiveTab("download");
+          
+          toast.success("Document signed successfully", {
+            description: `Certificate ID: ${result.certificateId || result.savedDoc.id}`
+          });
+        }, 3000); // Increased time to show success state clearly
+      }, 1000);
       
     } catch (error) {
       console.error("Error processing document:", error);
@@ -441,16 +449,7 @@ export default function SignPage() {
       // Wait before allowing dialog to be closed
       setTimeout(() => {
         setIsProcessing(false);
-      }, 1500);
-    } finally {
-      // Don't immediately set processing to false, let the animation complete
-      if (signingProgress >= 100) {
-        setTimeout(() => {
-          setIsProcessing(false);
-        }, 1000);
-      } else {
-        setIsProcessing(false);
-      }
+      }, 3000);
     }
   };
 
@@ -1111,7 +1110,7 @@ export default function SignPage() {
                             Certificate ID
                           </h4>
                           <p className="text-muted-foreground text-xs">
-                            Unique identifier that links to the blockchain record of this document&apos;s signature.
+                            Unique identifier that links to the secure registry record of this document's signature.
                           </p>
                         </div>
                         
@@ -1166,7 +1165,7 @@ export default function SignPage() {
                   </div>
                   <h3 className="text-lg font-medium mb-2">No Signed Document</h3>
                   <p className="text-muted-foreground mb-6 max-w-md">
-                    You haven&apos;t signed a document yet. Please upload a document and complete the signing process.
+                    You haven't signed a document yet. Please upload a document and complete the signing process.
                   </p>
                   <Button onClick={() => setActiveTab("upload")}>
                     Upload Document
@@ -1242,42 +1241,52 @@ export default function SignPage() {
                   transition={{ type: "spring", stiffness: 50 }}
                 />
               </div>
-              <div className="mt-4 flex items-center justify-center">
-                {isProcessing && signingProgress < 100 && (
+              <div className="mt-4 flex flex-col items-center justify-center">
+                {isProcessing && signingProgress < 100 ? (
+                  <div className="flex flex-col items-center">
+                    <motion.div
+                      animate={{ rotate: 360, scale: [1, 1.1, 1] }}
+                      transition={{ 
+                        rotate: { duration: 1.5, repeat: Infinity, ease: "linear" },
+                        scale: { duration: 2, repeat: Infinity }
+                      }}
+                      className="mb-2"
+                    >
+                      <Loader2 className="h-8 w-8 text-primary" />
+                    </motion.div>
+                    <span className="text-sm font-medium text-center">
+                      {signingStage || 'Preparing'}
+                      <span className="text-xs text-muted-foreground ml-1">
+                        ({Math.round(signingProgress)}%)
+                      </span>
+                    </span>
+                  </div>
+                ) : signingProgress >= 100 ? (
                   <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+                    transition={{ duration: 0.5 }}
+                    className="flex flex-col items-center"
                   >
-                    <Loader2 className="h-6 w-6 mr-2 text-primary" />
-                  </motion.div>
-                )}
-                
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={signingStage || 'loading'}
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="text-center"
-                  >
-                    {signingProgress === 100 ? (
-                      <div className="flex items-center">
-                        <Shield className="h-6 w-6 mr-2 text-primary" />
-                        <span className="font-medium">{signingStage || 'Signature complete!'}</span>
-                      </div>
-                    ) : (
-                      <div>
-                        <span className="text-sm font-medium">
-                          {signingStage || 'Preparing'}
-                        </span>
-                        <span className="text-xs text-muted-foreground ml-2">
-                          ({Math.round(signingProgress)}%)
-                        </span>
+                    <div className="bg-primary/10 p-3 rounded-full mb-2">
+                      <CheckCircle className="h-10 w-10 text-primary" />
+                    </div>
+                    <h3 className="text-xl font-medium mb-1">Signature Successful!</h3>
+                    <p className="text-sm text-muted-foreground text-center mb-3">
+                      Document has been securely signed with {session?.user?.security?.algorithm || "RSA"} encryption
+                    </p>
+                    {certificateId && (
+                      <div className="bg-secondary/20 px-3 py-2 rounded-md text-xs flex items-center mt-1">
+                        <Key className="h-3 w-3 mr-1.5 text-primary" />
+                        Certificate ID: <span className="font-mono ml-1 text-primary">{certificateId}</span>
                       </div>
                     )}
                   </motion.div>
-                </AnimatePresence>
+                ) : (
+                  <div className="text-sm text-center text-muted-foreground">
+                    Preparing signature process...
+                  </div>
+                )}
               </div>
             </div>
             
@@ -1338,17 +1347,8 @@ export default function SignPage() {
               <span>Cryptographic Processing</span>
             </div>
             <div className="flex items-center">
-              {documentAnalysis ? (
-                <>
-                  <Brain className="h-3 w-3 mr-1 text-primary/70" />
-                  <span>AI Enhanced</span>
-                </>
-              ) : (
-                <>
-                  <Database className="h-3 w-3 mr-1" />
-                  <span>Blockchain Secured</span>
-                </>
-              )}
+              <Brain className="h-3 w-3 mr-1 text-primary/70" />
+              <span>AI Enhanced</span>
             </div>
           </div>
           

@@ -115,9 +115,17 @@ export default function VerifyCertificatePage() {
                     
                     <dt>Signed Date:</dt>
                     <dd>{formatDate(verificationResult.documentInfo.timestamp)}</dd>
+
+                    <dt>Signature Algorithm:</dt>
+                    <dd>{verificationResult.documentInfo.algorithm || "RSA"}</dd>
+
+                    <dt>Signature:</dt>
+                    <dd className="font-mono text-xs break-all hash-code">
+                      {verificationResult.documentInfo.signature}
+                    </dd>
                     
                     <dt>Hash Algorithm:</dt>
-                    <dd>{verificationResult.documentInfo.algorithm || "SHA-256"}</dd>
+                    <dd>SHA-256</dd>
                     
                     {verificationResult.documentInfo.fileHash && (
                       <>
@@ -281,9 +289,9 @@ export default function VerifyCertificatePage() {
                     <dt>Certificate ID:</dt>
                     <dd className="font-mono">{verificationResult.documentInfo.certificateId}</dd>
                     
-                    <dt>Verification URL:</dt>
+                    <dt>PDF URL:</dt>
                     <dd className="break-all text-xs hash-code">
-                      {verificationResult.documentInfo.qrCodeUrl}
+                      {verificationResult.documentInfo.signedPdfUrl}
                     </dd>
                   </div>
                 </div>

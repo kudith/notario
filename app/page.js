@@ -682,8 +682,8 @@ export default function Home() {
                 >
                   <p className="text-sm text-muted-foreground">
                     Surat Keputusan Penelitian untuk Dr. Budi Santoso terkait
-                    proyek "Implementasi Blockchain untuk Keamanan Data
-                    Akademik" yang dikeluarkan oleh Lembaga Penelitian
+                    proyek &quot;Implementasi Blockchain untuk Keamanan Data
+                    Akademik&quot; yang dikeluarkan oleh Lembaga Penelitian
                     Universitas Indonesia.
                   </p>
                 </motion.div>
@@ -730,7 +730,6 @@ export default function Home() {
                   "0 0 0 0 rgba(var(--primary-rgb), 0)"
                 ]
               }}
-              transition={{ duration: 3, repeat: Infinity }}
             >
               {/* Placeholder for QR code image */}
               <div className="w-full h-full flex items-center justify-center text-xs text-center p-2">
