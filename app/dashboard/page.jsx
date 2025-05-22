@@ -61,6 +61,7 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [userHasPendingChanges, setUserHasPendingChanges] = useState(false);
+  const [activeTab, setActiveTab] = useState("documents");
   
   // Use refs to track states that shouldn't trigger re-renders
   const isChangingAlgorithm = useRef(false);
@@ -365,7 +366,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="container mx-auto py-10 px-4">
+    <div className="container mx-auto py-10 px-4 max-w-5xl">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
         <h1 className="text-3xl font-bold">Dashboard</h1>
         
@@ -387,11 +388,13 @@ export default function DashboardPage() {
       <Tabs 
         defaultValue="documents" 
         className="space-y-6"
+        value={activeTab}
         onValueChange={(value) => {
+          setActiveTab(value);
           // Reset pending changes when switching tabs
           if (value !== "security" && userHasPendingChanges) {
             console.log("Tab changed with pending changes, resetting to server value");
-            setSelectedAlgorithm(userData?.algorithm || "RSA");
+            setSelectedAlgorithm(userData?.security?.algorithm || "RSA");
             setUserHasPendingChanges(false);
           }
         }}
@@ -444,7 +447,7 @@ export default function DashboardPage() {
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-medium leading-none">Current Algorithm</h3>
                     <Badge variant="secondary" className="font-mono">
-                      {userData?.algorithm || "Unknown"}
+                      {userData?.security?.algorithm || "Unknown"}
                     </Badge>
                   </div>
                   <div className="bg-muted p-3 rounded-md">
@@ -452,9 +455,9 @@ export default function DashboardPage() {
                       <div className="flex items-center text-sm">
                         <FileLock className="h-4 w-4 mr-2 text-muted-foreground" />
                         <span className="text-muted-foreground">
-                          {userData?.algorithm === "RSA" 
+                          {userData?.security?.algorithm === "RSA" 
                             ? "Using RSA 2048-bit asymmetric encryption" 
-                            : userData?.algorithm === "ECDSA" 
+                            : userData?.security?.algorithm === "ECDSA" 
                               ? "Using ECDSA P-256 curve encryption" 
                               : "Algorithm information not available"}
                         </span>
@@ -486,7 +489,7 @@ export default function DashboardPage() {
                     onValueChange={handleAlgorithmSelectionChange} // Use our custom handler
                     className="space-y-3"
                   >
-                    <div className="flex items-center space-x-2 border rounded-md p-3 hover:bg-accent/10 transition-colors">
+                    <div className="flex items-start space-x-2 border rounded-md p-3 hover:bg-accent/10 transition-colors">
                       <RadioGroupItem value="RSA" id="rsa" />
                       <Label htmlFor="rsa" className="flex flex-col cursor-pointer">
                         <span className="font-medium">RSA Signature</span>
@@ -495,7 +498,7 @@ export default function DashboardPage() {
                         </span>
                       </Label>
                     </div>
-                    <div className="flex items-center space-x-2 border rounded-md p-3 hover:bg-accent/10 transition-colors">
+                    <div className="flex items-start space-x-2 border rounded-md p-3 hover:bg-accent/10 transition-colors">
                       <RadioGroupItem value="ECDSA" id="ecdsa" />
                       <Label htmlFor="ecdsa" className="flex flex-col cursor-pointer">
                         <span className="font-medium">ECDSA Signature</span>
@@ -623,8 +626,13 @@ export default function DashboardPage() {
                     <div className="mr-4 h-20 w-20 rounded-full overflow-hidden border-2 border-border">
                       <img 
                         src={userData.avatarUrl}
-                        alt={userData.name}
+                        alt={userData?.name || "User avatar"}
                         className="h-full w-full object-cover"
+                        onError={(e) => {
+                          console.error("Failed to load avatar:", userData.avatarUrl);
+                          e.target.onerror = null; 
+                          e.target.src = "https://ui-avatars.com/api/?name=" + encodeURIComponent(userData?.name || "User");
+                        }}
                       />
                     </div>
                   )}
@@ -704,19 +712,19 @@ export default function DashboardPage() {
                     </div>
                   )}
                   
-                  {userData?.algorithm && (
+                  {userData?.security?.algorithm && (
                     <div className="space-y-1">
                       <div className="flex items-center">
                         <Shield className="h-4 w-4 mr-2 text-muted-foreground" />
                         <h3 className="text-sm font-medium leading-none">Digital Signature</h3>
                       </div>
                       <p className="text-sm text-muted-foreground pl-6 flex items-center">
-                        {userData.algorithm} Algorithm
+                        {userData.security.algorithm} Algorithm
                         <Button 
                           variant="ghost" 
                           size="sm" 
                           className="h-6 ml-2" 
-                          onClick={() => document.querySelector('[value="security"]').click()}
+                          onClick={() => setActiveTab("security")}
                         >
                           <ChevronRight className="h-3 w-3" />
                         </Button>

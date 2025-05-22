@@ -2,71 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
-import crypto from "crypto";
-import { generateUniqueKeyPair } from "@/utils/crypto-utils";
-
-/**
- * Generates a unique ECDSA key pair and ensures the public key doesn't already exist in the database
- * @returns {Promise<{publicKey: string, privateKey: string, algorithm: string}>} A unique ECDSA key pair
- */
-async function generateUniqueECDSAKeyPair() {
-  // Maximum retry attempts to prevent infinite loops
-  const MAX_ATTEMPTS = 5;
-  let attempts = 0;
-  
-  while (attempts < MAX_ATTEMPTS) {
-    attempts++;
-    
-    try {
-      // Generate new ECDSA key pair with enhanced security
-      // Using P-256 curve (secp256r1) which offers good balance of security and performance
-      const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", {
-        namedCurve: "P-256", // NIST P-256 curve (equivalent to secp256r1)
-        publicKeyEncoding: {
-          type: "spki",
-          format: "pem",
-        },
-        privateKeyEncoding: {
-          type: "pkcs8",
-          format: "pem",
-        },
-      });
-
-      // Create a unique fingerprint of the public key for logging/debugging
-      const keyFingerprint = crypto
-        .createHash("sha256")
-        .update(publicKey)
-        .digest("hex")
-        .substring(0, 8);
-        
-      console.log(`Generated ECDSA key pair with fingerprint: ${keyFingerprint}`);
-      
-      // Verify this public key doesn't already exist in database
-      const existingUser = await prisma.user.findFirst({
-        where: { publicKey: publicKey },
-        select: { id: true }
-      });
-      
-      if (existingUser) {
-        console.warn(`Key collision detected on attempt ${attempts}. Regenerating...`);
-        continue; // Try again
-      }
-      
-      // Key is unique, return it with explicit algorithm
-      return { publicKey, privateKey, algorithm: "ECDSA" };
-    } catch (error) {
-      console.error("Error generating ECDSA key pair:", error);
-      
-      // If we've reached max attempts, throw an error
-      if (attempts >= MAX_ATTEMPTS) {
-        throw new Error("Failed to generate a unique ECDSA key pair after multiple attempts");
-      }
-    }
-  }
-  
-  // This should never be reached due to the throw above, but TypeScript might complain without it
-  throw new Error("Failed to generate a unique ECDSA key pair");
-}
+import { generateUniqueKeyPair, generateUniqueECDSAKeyPair, generateKeyPairByAlgorithm } from "@/utils/crypto-utils";
 
 /**
  * Retrieves sensitive audit information for security logging
@@ -155,18 +91,10 @@ export async function POST(request) {
     const audit = getAuditInfo(request);
     console.log(`Algorithm change requested for user ${userId} from ${currentUser.algorithm} to ${normalizedAlgorithm}`, audit);
     
-    // Generate appropriate key pair based on the requested algorithm
-    let keyPairResult;
-    let algorithmToSave;
-    
-    if (normalizedAlgorithm === "RSA") {
-      keyPairResult = await generateUniqueKeyPair();
-      algorithmToSave = "RSA"; // Explicitly set algorithm
-    } else {
-      // Must be ECDSA since we validated earlier
-      keyPairResult = await generateUniqueECDSAKeyPair();
-      algorithmToSave = "ECDSA"; // Explicitly set algorithm
-    }
+    // Generate key pair using the modular function from crypto-utils.js
+    // We'll use generateKeyPairByAlgorithm which returns the proper structure with algorithm included
+    const keyPairResult = await generateKeyPairByAlgorithm(normalizedAlgorithm);
+    const algorithmToSave = keyPairResult.algorithm; // Use the algorithm returned from the util function
     
     console.log(`Generated key pair with algorithm: ${algorithmToSave}`);
     
