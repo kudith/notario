@@ -4,7 +4,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import { PDFDocument, rgb } from "pdf-lib";
 import QRCode from "qrcode";
-import { uploadPdfToDrive } from "@/lib/google-drive";
+import { uploadPdfToR2 } from "@/lib/r2-storage";
 import crypto from "crypto";
 import { detectSignatureArea } from "@/lib/pdf-signature-area";
 
@@ -445,18 +445,36 @@ function generateCertificateId() {
 // Add QR code to PDF document
 async function addQRCodeToPdf(pdfBuffer, certificateId, fileHash, options = {}) {
   try {
+    // Create verification URL
+    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+    const verifyUrl = `${baseUrl}/verify/${certificateId}`;
+    
+    // Try using Python service first
+    console.log("Attempting to use Python service for QR placement");
+    const pythonModifiedPdf = await sendToPythonForQRPlacement(
+      pdfBuffer, 
+      certificateId,
+      verifyUrl
+    );
+    
+    if (pythonModifiedPdf) {
+      console.log("Successfully used Python service for QR placement");
+      return pythonModifiedPdf;
+    }
+    
+    console.log("Falling back to JavaScript QR placement");
+    
+    // Original JavaScript implementation
     const pdfDoc = await PDFDocument.load(pdfBuffer);
     const pageIndex = pdfDoc.getPageCount() - 1;
     const page = pdfDoc.getPage(pageIndex);
 
-    // Deteksi posisi tanda tangan otomatis
+    // Detect signature area
     let { x, y } = await detectSignatureArea(pdfBuffer);
 
     const qrSize = 100;
 
-    // Create verification URL with certificateId (shorter and more user-friendly)
-    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-    const verifyUrl = `${baseUrl}/verify/${certificateId}`;
+    // Create QR code
     const qrCodeBuffer = await QRCode.toBuffer(verifyUrl, {
       errorCorrectionLevel: 'M',
       margin: 2,
@@ -464,7 +482,7 @@ async function addQRCodeToPdf(pdfBuffer, certificateId, fileHash, options = {}) 
     });
     const qrCodeImage = await pdfDoc.embedPng(qrCodeBuffer);
 
-    // Draw background rectangle (optional)
+    // Draw background rectangle
     page.drawRectangle({
       x: x - 5,
       y: y - 5,
@@ -484,7 +502,7 @@ async function addQRCodeToPdf(pdfBuffer, certificateId, fileHash, options = {}) 
       height: qrSize
     });
 
-    // Draw text below QR code (optional)
+    // Draw text below QR code
     const fontSize = 8;
     page.drawText(`Verified: ${new Date().toLocaleDateString()}`, {
       x,
@@ -504,6 +522,56 @@ async function addQRCodeToPdf(pdfBuffer, certificateId, fileHash, options = {}) 
   } catch (error) {
     console.error("Error adding QR code to PDF:", error);
     throw error;
+  }
+}
+
+// Add this function near the top with the other helper functions
+
+async function sendToPythonForQRPlacement(pdfBuffer, certificateId, verifyUrl) {
+  try {
+    console.log("Sending PDF to Python service for QR placement");
+    
+    // Create form data
+    const formData = new FormData();
+    const pdfBlob = new Blob([pdfBuffer], { type: 'application/pdf' });
+    formData.append('file', pdfBlob, 'document.pdf');
+    formData.append('marker', '[[SIGN_HERE]]');
+    formData.append('qr_data', verifyUrl);
+    formData.append('certificate_id', certificateId);
+    
+    // Send to Python service
+    const pythonServiceUrl = process.env.PYTHON_QR_SERVICE || 'http://localhost:8000';
+    console.log(`Using Python service at ${pythonServiceUrl}`);
+    
+    const response = await fetch(`${pythonServiceUrl}/detect-and-add-qr`, {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      // Try to get error details
+      try {
+        const errorData = await response.json();
+        console.error("Python QR service error:", errorData);
+        
+        if (response.status === 404 && errorData.error?.includes("No marker")) {
+          console.log("No [[SIGN_HERE]] markers found in document");
+          return null; // Indicate no markers found
+        }
+      } catch (e) {
+        // If we can't parse the response as JSON
+        console.error(`Python service returned ${response.status}`);
+      }
+      return null;
+    }
+    
+    // Get the modified PDF
+    const modifiedPdfBuffer = Buffer.from(await response.arrayBuffer());
+    console.log("Successfully received modified PDF from Python service");
+    return modifiedPdfBuffer;
+  } catch (error) {
+    console.error("Error communicating with Python QR service:", error);
+    return null;
   }
 }
 
@@ -726,8 +794,8 @@ export async function POST(req) {
     console.log("Original document hash:", originalFileHash);
     console.log("Signed document hash:", signedFileHash);
 
-    // Upload to Google Drive
-    let driveResult = null;
+    // Upload to R2 Storage
+    let storageResult = null;
     try {
       const fileName = `signed_${certificateId}_${file.name}`;
       
@@ -739,10 +807,10 @@ export async function POST(req) {
         timestamp: timestamp || new Date().toISOString()
       };
       
-      driveResult = await uploadPdfToDrive(modifiedPdfBuffer, fileName, uploadMetadata);
-      console.log("PDF uploaded to Google Drive:", driveResult);
-    } catch (driveError) {
-      console.error("Failed to upload PDF to Google Drive:", driveError);
+      storageResult = await uploadPdfToR2(modifiedPdfBuffer, fileName, uploadMetadata);
+      console.log("PDF uploaded to R2:", storageResult);
+    } catch (storageError) {
+      console.error("Failed to upload PDF to R2:", storageError);
     }
 
     // Prepare the document record for database insertion
@@ -756,11 +824,13 @@ export async function POST(req) {
       algorithm: userAlgorithm,
       certificateId,
       timestamp: timestamp ? new Date(timestamp) : new Date(),
-      // Include Drive file info if available
-      driveFileId: driveResult?.fileId || null,
-      driveViewUrl: driveResult?.viewUrl || null,
-      driveDownloadUrl: driveResult?.downloadUrl || null,
-      signedPdfUrl: driveResult?.viewUrl || null,
+      
+      // Map R2 file info to existing database fields
+      driveFileId: storageResult?.fileId || null,
+      driveViewUrl: storageResult?.viewUrl || null, 
+      driveDownloadUrl: storageResult?.downloadUrl || null,
+      signedPdfUrl: storageResult?.viewUrl || null,
+      
       // Include metadata
       metadata: {
         pdfInfo: pdfMetadata,
@@ -778,7 +848,9 @@ export async function POST(req) {
           signedBy: user.name,
           signedByEmail: user.email
         },
-        folderPath: driveResult?.folderPath || null
+        folderPath: storageResult?.folderPath || null,
+        // Add storage type info to metadata
+        storageType: "r2" // Indicate we're using R2 instead of Google Drive
       },
     };
 
@@ -806,15 +878,20 @@ export async function POST(req) {
             documentType,
             documentNumber: additionalInfo.documentNumber,
             subject: customSubject || pdfMetadata.title || file.name,
-            pageCount: pdfMetadata.pageCount || 0
+            pageCount: pdfMetadata.pageCount || 0,
+            storageType: "r2" // Add storage type info
           }
         },
         documentId: storedDocument.id,
         certificateId: storedDocument.certificateId,
-        signedPdfUrl: storedDocument.signedPdfUrl,
-        driveFileId: storedDocument.driveFileId,
-        driveViewUrl: storedDocument.driveViewUrl, 
-        driveDownloadUrl: storedDocument.driveDownloadUrl,
+        signedPdfUrl: storedDocument.signedPdfUrl || storedDocument.driveViewUrl,
+        // Use clear naming for frontend but keep database field names
+        storageInfo: {
+          fileId: storedDocument.driveFileId,
+          viewUrl: storedDocument.driveViewUrl, 
+          downloadUrl: storedDocument.driveDownloadUrl,
+          provider: "R2"
+        },
         verificationDetails: {
           approach: verificationResult.approach,
           attemptsMade: verificationResult.results?.attempts?.length || 1
