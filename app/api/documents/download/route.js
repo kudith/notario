@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
-import { downloadFileFromDrive } from '@/lib/google-drive';
+import { downloadFileFromR2 } from '@/lib/r2-storage';
 
 export async function GET(req) {
   try {
@@ -50,10 +50,10 @@ export async function GET(req) {
           }
         }
         
-        // Check if we have a Google Drive file ID
+        // Check if we have a file ID
         if (!document.driveFileId) {
           return NextResponse.json(
-            { error: 'Document has no associated Google Drive file' },
+            { error: 'Document has no associated file ID' },
             { status: 404 }
           );
         }
@@ -63,8 +63,8 @@ export async function GET(req) {
           return NextResponse.redirect(document.driveDownloadUrl);
         }
         
-        // Option 2: Download the file from Google Drive and serve it
-        const fileData = await downloadFileFromDrive(document.driveFileId);
+        // Option 2: Download the file from R2 and serve it
+        const fileData = await downloadFileFromR2(document.driveFileId);
         
         return new NextResponse(fileData.buffer, {
           headers: {
@@ -84,8 +84,8 @@ export async function GET(req) {
     // For direct file ID based downloads
     if (fileId) {
       try {
-        // Download the file from Google Drive
-        const fileData = await downloadFileFromDrive(fileId);
+        // Download the file from R2
+        const fileData = await downloadFileFromR2(fileId);
         
         return new NextResponse(fileData.buffer, {
           headers: {
@@ -114,4 +114,4 @@ export async function GET(req) {
       { status: 500 }
     );
   }
-} 
+}
