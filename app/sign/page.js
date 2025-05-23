@@ -1181,14 +1181,6 @@ export default function SignPage() {
               <Brain className="h-3 w-3 mr-1 text-primary/70" />
               <span>AI-powered document analysis</span>
             </div>
-            <div className="flex items-center">
-              <Lock className="h-3 w-3 mr-1" />
-              <span>
-                {session?.user?.security?.algorithm === "ECDSA" 
-                  ? "ECDSA P-256 encryption" 
-                  : "RSA 2048-bit encryption"}
-              </span>
-            </div>
           </div>
         </CardFooter>
       </Card>

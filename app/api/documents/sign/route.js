@@ -450,15 +450,12 @@ async function addQRCodeToPdf(pdfBuffer, certificateId, fileHash, options = {}) 
     const pageIndex = options.pageIndex || pdfDoc.getPageCount() - 1;
     const page = pdfDoc.getPage(pageIndex);
     
-    // Generate QR code
-    const qrCodeData = JSON.stringify({
-      certificateId,
-      fileHash,
-      timestamp: new Date().toISOString(),
-      verifyUrl: `${process.env.NEXTAUTH_URL || 'https://yourdomain.com'}/verify/${certificateId}`
-    });
+    // Create verification URL with certificateId (shorter and more user-friendly)
+    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+    const verifyUrl = `${baseUrl}/verify/${certificateId}`;
     
-    const qrCodeBuffer = await QRCode.toBuffer(qrCodeData, {
+    // Generate QR code with direct URL
+    const qrCodeBuffer = await QRCode.toBuffer(verifyUrl, {
       errorCorrectionLevel: 'M',
       margin: 2,
       scale: 4
@@ -744,10 +741,13 @@ export async function POST(req) {
     
     let additionalInfo = extractInfoFromTitle(pdfMetadata.title || file.name);
 
+    // Calculate hash of original document 
+    const originalFileHash = await calculateFileHash(fileBuffer);
+
     // Add QR code to PDF
     let modifiedPdfBuffer;
     try {
-      modifiedPdfBuffer = await addQRCodeToPdf(fileBuffer, certificateId, fileHash, {
+      modifiedPdfBuffer = await addQRCodeToPdf(fileBuffer, certificateId, originalFileHash, {
         position: preferredQRPosition || 'bottom-right'
       });
       console.log("QR code added to PDF successfully");
@@ -756,6 +756,11 @@ export async function POST(req) {
       // Fall back to original PDF
       modifiedPdfBuffer = fileBuffer;
     }
+
+    // Calculate hash of the signed document (with QR code)
+    const signedFileHash = await calculateFileHash(modifiedPdfBuffer);
+    console.log("Original document hash:", originalFileHash);
+    console.log("Signed document hash:", signedFileHash);
 
     // Upload to Google Drive
     let driveResult = null;
@@ -780,7 +785,8 @@ export async function POST(req) {
     const documentData = {
       userId: session.user.id,
       fileName: file.name,
-      fileHash,
+      fileHash: originalFileHash,  // This is the original hash
+      signedFileHash: signedFileHash,  // This is the hash after adding QR code
       signature,
       publicKey,
       algorithm: userAlgorithm,

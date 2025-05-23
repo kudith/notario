@@ -31,7 +31,8 @@ model Document {
   id            String   @id @default(auto()) @map("_id") @db.ObjectId
   userId        String   @db.ObjectId
   fileName      String
-  fileHash      String   // SHA-256 hash
+  fileHash      String   // Original document hash
+  signedFileHash String?  // Signed document hash (with QR code)
   signature     String   // digital signature string
   algorithm     String   @default("RSA")
   publicKey     String

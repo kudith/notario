@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { verifyDocumentByIdentifier } from "@/lib/document-service";
-import { Loader2, FileCheck, XCircle, ArrowLeft, CalendarIcon, UserCircle, FileText, Tag, AlignLeft, Calendar, Clock, Hash, ExternalLink, Brain, Lightbulb, ListChecks } from "lucide-react";
+import { Loader2, FileCheck, XCircle, ArrowLeft, CalendarIcon, UserCircle, FileText, Tag, AlignLeft, Calendar, Clock, Hash, ExternalLink, Brain, Lightbulb, ListChecks, AlertCircle } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +23,21 @@ export default function VerifyCertificatePage() {
       if (!certificateId) return;
       
       try {
+        setIsLoading(true);
+        
+        console.log(`Verifying document with certificateId: ${certificateId}`);
         const result = await verifyDocumentByIdentifier(certificateId);
+        
+        if (!result.verified) {
+          console.error("Verification failed:", result);
+          // Display more detailed error info
+          if (result.diagnostic?.similarCertificateIds?.length > 0) {
+            toast.error("Certificate ID not found", {
+              description: "Similar IDs found. Check for typos in the certificate ID.",
+            });
+          }
+        }
+        
         setVerificationResult(result);
       } catch (error) {
         console.error("Verification error:", error);
@@ -530,7 +544,7 @@ export default function VerifyCertificatePage() {
         </Card>
       )}
       
-      <Toaster richColors position="top-center" />
+      {/* <Toaster richColors position="bottom-right" /> */}
     </div>
   );
 }

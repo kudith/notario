@@ -7,7 +7,6 @@ import { PDFDocument } from 'pdf-lib';
 import * as QRCode from 'qrcode';
 import jsQR from 'jsqr';
 import { createCanvas, loadImage } from 'canvas';
-import sharp from 'sharp'; // Add this dependency for image processing
 
 // Helper function to calculate file hash
 async function calculateFileHash(buffer) {
@@ -49,149 +48,125 @@ async function extractPdfMetadata(buffer) {
   }
 }
 
-// Enhanced function to extract certificate ID from QR codes in a PDF
-async function extractQRFromPDF(pdfBuffer) {
+// Verify the signature with the stored public key
+async function verifySignature(fileHash, signature, publicKey, algorithm = "RSA", timestamp = null) {
   try {
-    const pdfDoc = await PDFDocument.load(pdfBuffer);
-    const pageCount = pdfDoc.getPageCount();
-    const results = [];
+    console.log(`Verifying signature using ${algorithm} algorithm`);
+    console.log(`Hash to verify: ${fileHash.substring(0, 20)}...`);
+
+    // Ensure public key has proper PEM format
+    let formattedPublicKey = publicKey;
+    if (!publicKey.includes("-----BEGIN")) {
+      formattedPublicKey = `-----BEGIN PUBLIC KEY-----\n${publicKey}\n-----END PUBLIC KEY-----`;
+    }
+
+    // Remove any whitespace from signature
+    let cleanedSignature = signature;
+    if (typeof signature === 'string') {
+      cleanedSignature = signature.replace(/\s+/g, '');
+    }
+
+    // Convert signature string to buffer
+    const isBase64 = /^[A-Za-z0-9+/=]+$/.test(cleanedSignature) && cleanedSignature.length % 4 === 0;
+    let signatureBuffer;
     
-    // Check the last page first (where we typically add QR codes)
-    const pagesToCheck = [
-      pageCount - 1, // Last page (most likely)
-      0,             // First page (sometimes QR codes are here)
-      Math.floor(pageCount / 2) // Middle page as a fallback
-    ];
-    
-    for (const pageIndex of pagesToCheck) {
-      if (pageIndex < 0 || pageIndex >= pageCount) continue;
+    try {
+      if (isBase64) {
+        signatureBuffer = Buffer.from(cleanedSignature, "base64");
+      } else {
+        signatureBuffer = Buffer.from(cleanedSignature, "hex");
+      }
+    } catch (convError) {
+      console.error("Error converting signature format:", convError);
+      return { valid: false, error: "Signature format conversion error" };
+    }
+
+    // For RSA verification
+    if (algorithm === "RSA") {
+      // Try first with timestamp if provided (more secure)
+      if (timestamp) {
+        try {
+          const dataToVerify = `${fileHash}|${timestamp}`;
+          const verify = crypto.createVerify("SHA256");
+          verify.update(dataToVerify);
+          const result = verify.verify(formattedPublicKey, signatureBuffer);
+          if (result) {
+            return { valid: true, method: "hash|timestamp" };
+          }
+        } catch (err) {
+          console.log("Timestamp verification failed:", err.message);
+        }
+      }
       
+      // Try with just the hash
       try {
-        // Render the PDF page to PNG using pdf-lib and sharp
-        // Note: This is a simplified approach - real implementation would need
-        // proper PDF rendering which is complex
-        // In a production environment, you might use a service like pdf2image
+        const verify = crypto.createVerify("SHA256");
+        verify.update(fileHash);
+        const result = verify.verify(formattedPublicKey, signatureBuffer);
+        if (result) {
+          return { valid: true, method: "direct_hash" };
+        }
+      } catch (err) {
+        console.log("Direct hash verification failed:", err.message);
+      }
+      
+      return { valid: false, error: "Signature verification failed" };
+    } 
+    // For ECDSA verification
+    else if (algorithm === "ECDSA") {
+      try {
+        const publicKeyObject = crypto.createPublicKey({
+          key: formattedPublicKey,
+          format: 'pem',
+        });
         
-        // For now, we'll use a dummy implementation that demonstrates the approach
-        const pdfBytes = await pdfDoc.save();
-        
-        // Use sharp to convert the first page to an image (simplified)
-        // In a real implementation, you'd use a more robust PDF-to-image conversion
-        const imageBuffer = await sharp(Buffer.from(pdfBytes))
-          .toFormat('png')
-          .toBuffer();
-        
-        // Create a canvas and load the image
-        const canvas = createCanvas(1000, 1000); // Assume reasonable size
-        const ctx = canvas.getContext('2d');
-        const image = await loadImage(imageBuffer);
-        ctx.drawImage(image, 0, 0);
-        
-        // Get image data for QR scanning
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        // Scan for QR codes
-        const qrCode = jsQR(
-          imageData.data, 
-          imageData.width, 
-          imageData.height
-        );
-        
-        if (qrCode) {
-          try {
-            // Try to parse the QR code data
-            const parsedData = JSON.parse(qrCode.data);
-            if (parsedData.certificateId || parsedData.fileHash) {
-              results.push({
-                certificateId: parsedData.certificateId,
-                fileHash: parsedData.fileHash,
-                qrData: parsedData,
-                confidence: 'high',
-                source: 'qr_code'
-              });
-              // We found a valid QR code, no need to check more pages
-              break;
-            }
-          } catch (e) {
-            // If it's not JSON, check if it's a direct certificate ID or URL
-            const qrText = qrCode.data;
-            
-            // Check for certificate ID pattern
-            const certMatch = qrText.match(/CERT-[A-Z0-9]{7,}-[A-Z0-9]{6,}/);
-            if (certMatch) {
-              results.push({
-                certificateId: certMatch[0],
-                confidence: 'medium',
-                source: 'qr_text_pattern'
-              });
-            }
-            
-            // Check for verification URL
-            const urlMatch = qrText.match(/\/verify\/([A-Z0-9-]+)/);
-            if (urlMatch && urlMatch[1]) {
-              results.push({
-                certificateId: urlMatch[1],
-                confidence: 'medium',
-                source: 'qr_url_pattern'
-              });
-            }
+        // Try with timestamp first
+        if (timestamp) {
+          const dataToVerify = `${fileHash}|${timestamp}`;
+          const result = crypto.verify(
+            'sha256',
+            Buffer.from(dataToVerify),
+            {
+              key: publicKeyObject,
+              dsaEncoding: 'ieee-p1363'
+            },
+            signatureBuffer
+          );
+          if (result) {
+            return { valid: true, method: "ecdsa_timestamp" };
           }
         }
-      } catch (pageError) {
-        console.warn(`Error processing page ${pageIndex} for QR codes:`, pageError);
-        // Continue with next page
+        
+        // Try with just the hash
+        const result = crypto.verify(
+          'sha256',
+          Buffer.from(fileHash),
+          {
+            key: publicKeyObject,
+            dsaEncoding: 'ieee-p1363'
+          },
+          signatureBuffer
+        );
+        if (result) {
+          return { valid: true, method: "ecdsa_standard" };
+        }
+        
+        return { valid: false, error: "ECDSA signature verification failed" };
+      } catch (err) {
+        return { valid: false, error: `ECDSA verification error: ${err.message}` };
       }
+    } else {
+      return { valid: false, error: `Unsupported algorithm: ${algorithm}` };
     }
-    
-    // Look for text patterns in the PDF that might contain certificate IDs
-    const textContent = await extractTextFromPDF(pdfBuffer);
-    const certIdPatterns = [
-      /Certificate ID:\s*([A-Z0-9-]{10,})/i,
-      /Cert ID:\s*([A-Z0-9-]{10,})/i,
-      /Document ID:\s*([A-Z0-9-]{10,})/i,
-      /CERT-[A-Z0-9]{7,}-[A-Z0-9]{6,}/
-    ];
-    
-    for (const pattern of certIdPatterns) {
-      const match = textContent.match(pattern);
-      if (match && match[1]) {
-        results.push({
-          certificateId: match[1],
-          confidence: 'medium',
-          source: 'text_extraction'
-        });
-        break;
-      }
-    }
-    
-    return results.length > 0 ? results : null;
   } catch (error) {
-    console.error("Error extracting QR codes from PDF:", error);
-    return null;
+    console.error("Error during verification:", error);
+    return { valid: false, error: `Verification error: ${error.message}` };
   }
 }
 
-// Helper function to extract text from PDF
-async function extractTextFromPDF(pdfBuffer) {
-  try {
-    // This is a simplified placeholder function
-    // In a real implementation, you would use a PDF text extraction library
-    // such as pdf.js or pdfjs-dist
-    
-    // For now, return empty string as this is just a placeholder
-    return "";
-  } catch (error) {
-    console.error("Error extracting text from PDF:", error);
-    return "";
-  }
-}
-
-// Enhanced function to check document by multiple factors with confidence rating
-async function findDocumentWithConfidence(fileHash, metadata, qrData = null) {
-  const results = [];
-  
-  // 1. Direct hash match - most secure, highest confidence
-  const hashMatch = await prisma.document.findFirst({
+// Find document by hash
+async function findDocumentByHash(fileHash) {
+  return prisma.document.findFirst({
     where: { fileHash },
     include: {
       user: {
@@ -204,218 +179,10 @@ async function findDocumentWithConfidence(fileHash, metadata, qrData = null) {
       }
     }
   });
-  
-  if (hashMatch) {
-    results.push({
-      document: hashMatch, 
-      matchType: 'direct_hash',
-      confidence: 1.0 // 100% confidence
-    });
-    return results;
-  }
-  
-  // 2. Certificate ID match from QR code - high confidence
-  if (qrData && qrData.length > 0) {
-    const bestQrMatch = qrData[0];
-    if (bestQrMatch.certificateId) {
-      const certMatch = await prisma.document.findFirst({
-        where: { certificateId: bestQrMatch.certificateId },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              institution: true
-            }
-          }
-        }
-      });
-      
-      if (certMatch) {
-        results.push({
-          document: certMatch, 
-          matchType: 'qr_certificate_id', 
-          confidence: 0.95, // 95% confidence
-          qrData: bestQrMatch
-        });
-      }
-    }
-    
-    if (bestQrMatch.fileHash) {
-      const qrHashMatch = await prisma.document.findFirst({
-        where: { fileHash: bestQrMatch.fileHash },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              institution: true
-            }
-          }
-        }
-      });
-      
-      if (qrHashMatch) {
-        results.push({
-          document: qrHashMatch, 
-          matchType: 'qr_file_hash',
-          confidence: 0.9, // 90% confidence 
-          qrData: bestQrMatch
-        });
-      }
-    }
-  }
-  
-  // 3. Strict metadata match - multiple criteria must match - medium confidence
-  if (metadata && metadata.title && metadata.title.length > 5) {
-    // Try to find documents with matching title AND similar page count
-    const strictMetadataMatches = await prisma.document.findMany({
-      where: {
-        OR: [
-          // Match by nearly identical title
-          {
-            fileName: {
-              equals: metadata.title,
-              mode: 'insensitive'
-            }
-          },
-          // Match by substantial title similarity
-          {
-            fileName: {
-              contains: metadata.title,
-              mode: 'insensitive'
-            }
-          }
-        ]
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            institution: true
-          }
-        }
-      },
-      take: 5 // Limit to 5 potential matches
-    });
-    
-    if (strictMetadataMatches.length > 0) {
-      // Score each match by similarity
-      for (const doc of strictMetadataMatches) {
-        let score = 0;
-        
-        // Title match score
-        if (doc.fileName.toLowerCase() === metadata.title.toLowerCase()) {
-          score += 0.5; // Exact title match
-        } else if (doc.fileName.toLowerCase().includes(metadata.title.toLowerCase())) {
-          score += 0.3; // Partial title match
-        }
-        
-        // Additional metadata validation from document.metadata
-        if (doc.metadata && doc.metadata.pdfInfo) {
-          const pdfInfo = doc.metadata.pdfInfo;
-          
-          // Page count match
-          if (pdfInfo.pageCount === metadata.pageCount) {
-            score += 0.2;
-          }
-          
-          // Author match
-          if (pdfInfo.author && metadata.author && 
-              pdfInfo.author.toLowerCase() === metadata.author.toLowerCase()) {
-            score += 0.1;
-          }
-          
-          // Creation date proximity
-          if (pdfInfo.creationDate && metadata.creationDate) {
-            const date1 = new Date(pdfInfo.creationDate);
-            const date2 = new Date(metadata.creationDate);
-            const diffDays = Math.abs((date1 - date2) / (1000 * 60 * 60 * 24));
-            
-            if (diffDays < 2) { // Created within 2 days
-              score += 0.1;
-            }
-          }
-        }
-        
-        // Only include if score is significant
-        if (score >= 0.5) {
-          results.push({
-            document: doc,
-            matchType: 'enhanced_metadata',
-            confidence: score,
-            details: 'Multiple metadata factors matched'
-          });
-        }
-      }
-    }
-  }
-  
-  // 4. Simple title match - lowest confidence (only if no other matches)
-  if (results.length === 0 && metadata?.title && metadata.title.length > 10) {
-    const titleSearch = metadata.title.trim();
-    const titleMatch = await prisma.document.findFirst({
-      where: {
-        fileName: {
-          contains: titleSearch,
-          mode: 'insensitive'
-        }
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            institution: true
-          }
-        }
-      }
-    });
-    
-    if (titleMatch) {
-      results.push({
-        document: titleMatch,
-        matchType: 'basic_title_match',
-        confidence: 0.3, // Low confidence
-        details: 'Title similarity only'
-      });
-    }
-  }
-  
-  // Sort results by confidence and return
-  return results.sort((a, b) => b.confidence - a.confidence);
-}
-
-// Log verification attempt for security auditing
-async function logVerificationAttempt(result, fileHash, ipAddress, userAgent) {
-  try {
-    // In a production system, you'd log this to a database or secure log
-    console.log(`[SECURITY LOG] Document verification attempt:`, {
-      timestamp: new Date().toISOString(),
-      successful: result.verified,
-      fileHash: fileHash?.substring(0, 8) + '...',
-      matchType: result.matchType || 'none',
-      confidence: result.confidence || 0,
-      ipAddress,
-      userAgent: userAgent?.substring(0, 30) + '...',
-    });
-  } catch (error) {
-    console.error("Error logging verification attempt:", error);
-  }
 }
 
 export async function POST(req) {
   try {
-    // Security tracking
-    const requestUrl = new URL(req.url);
-    const ipAddress = req.headers.get('x-forwarded-for') || 'unknown';
-    const userAgent = req.headers.get('user-agent') || 'unknown';
-    
     // This endpoint can be used without authentication to verify documents
     const formData = await req.formData();
     const file = formData.get('file');
@@ -431,91 +198,30 @@ export async function POST(req) {
     const fileBuffer = Buffer.from(await file.arrayBuffer());
     const calculatedHash = await calculateFileHash(fileBuffer);
     
+    console.log(`Verifying document with calculated hash: ${calculatedHash.substring(0, 16)}...`);
+    
     // Extract PDF metadata for additional verification
     const pdfMetadata = await extractPdfMetadata(fileBuffer);
     
-    // NEW: Try to extract QR codes from the PDF
-    const qrResults = await extractQRFromPDF(fileBuffer);
-    console.log("QR extraction results:", qrResults);
-    
-    // Find document using our comprehensive matching algorithm
-    const matches = await findDocumentWithConfidence(calculatedHash, pdfMetadata, qrResults);
-    
-    // If we got any matches
-    if (matches.length > 0) {
-      const bestMatch = matches[0];
-      
-      // Determine trust level based on confidence
-      let trustLevel = 'low';
-      if (bestMatch.confidence >= 0.9) {
-        trustLevel = 'high';
-      } else if (bestMatch.confidence >= 0.7) {
-        trustLevel = 'medium';
-      }
-      
-      console.log(`Found document match by ${bestMatch.matchType} with ${bestMatch.confidence} confidence`);
-      
-      // Log this verification for security audit
-      await logVerificationAttempt(
-        { 
-          verified: true, 
-          matchType: bestMatch.matchType,
-          confidence: bestMatch.confidence 
-        },
-        calculatedHash,
-        ipAddress,
-        userAgent
-      );
-      
-      // Return verified result with complete document info
-      return NextResponse.json({
-        verified: true,
-        message: `Document verification successful (matched via ${bestMatch.matchType})`,
-        trustLevel: trustLevel,
-        confidence: bestMatch.confidence,
-        matchDetails: {
-          type: bestMatch.matchType,
-          details: bestMatch.details || null
-        },
-        documentInfo: {
-          id: bestMatch.document.id,
-          certificateId: bestMatch.document.certificateId,
-          fileName: bestMatch.document.fileName,
-          fileHash: bestMatch.document.fileHash, // Original hash
-          algorithm: bestMatch.document.algorithm,
-          timestamp: bestMatch.document.timestamp || bestMatch.document.createdAt,
-          qrCodeUrl: bestMatch.document.qrCodeUrl,
-          signedPdfUrl: bestMatch.document.driveViewUrl || bestMatch.document.signedPdfUrl,
-          driveFileId: bestMatch.document.driveFileId,
-          driveViewUrl: bestMatch.document.driveViewUrl,
-          driveDownloadUrl: bestMatch.document.driveDownloadUrl,
-          signer: bestMatch.document.user ? {
-            id: bestMatch.document.user.id,
-            name: bestMatch.document.user.name,
-            email: bestMatch.document.user.email,
-            institution: bestMatch.document.user.institution
-          } : null,
-          metadata: bestMatch.document.metadata
-        },
-        uploadedPdfInfo: pdfMetadata,
-        qrDataFound: qrResults ? true : false,
-        securityInfo: {
-          verificationMethod: bestMatch.matchType,
-          confidenceScore: bestMatch.confidence,
-          timestamp: new Date().toISOString(),
-          documentHash: calculatedHash,
-          originalHash: bestMatch.document.fileHash,
-          hashMatch: calculatedHash === bestMatch.document.fileHash
+    // First try to find document by signedFileHash (exact match with QR code)
+    let document = await prisma.document.findFirst({
+      where: { signedFileHash: calculatedHash },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            institution: true
+          }
         }
-      }, { status: 200 });
-    }
+      }
+    });
     
-    // If still not found, try one more check with the filename for certificate ID
-    const filenameMatch = file.name.match(/CERT-[A-Z0-9]{7,}-[A-Z0-9]{6,}/);
-    if (filenameMatch && filenameMatch[0]) {
-      const potentialCertId = filenameMatch[0];
-      const certDocument = await prisma.document.findFirst({
-        where: { certificateId: potentialCertId },
+    // If not found, check if it matches the original hash
+    if (!document) {
+      document = await prisma.document.findFirst({
+        where: { fileHash: calculatedHash },
         include: {
           user: {
             select: {
@@ -528,83 +234,98 @@ export async function POST(req) {
         }
       });
       
-      if (certDocument) {
-        // Log this verification
-        await logVerificationAttempt(
-          { 
-            verified: true, 
-            matchType: 'filename_certificate_id',
-            confidence: 0.8
-          },
-          calculatedHash,
-          ipAddress,
-          userAgent
-        );
-        
-        // Found by certificate ID in filename
+      // Found by original hash but not signed hash - this is the original unsigned document
+      if (document) {
         return NextResponse.json({
-          verified: true,
-          message: 'Document verified by certificate ID in filename',
-          trustLevel: 'medium',
-          confidence: 0.8,
-          documentInfo: {
-            id: certDocument.id,
-            certificateId: certDocument.certificateId,
-            fileName: certDocument.fileName,
-            fileHash: certDocument.fileHash,
-            algorithm: certDocument.algorithm,
-            timestamp: certDocument.timestamp || certDocument.createdAt,
-            qrCodeUrl: certDocument.qrCodeUrl,
-            signedPdfUrl: certDocument.driveViewUrl || certDocument.signedPdfUrl,
-            driveFileId: certDocument.driveFileId,
-            driveViewUrl: certDocument.driveViewUrl,
-            driveDownloadUrl: certDocument.driveDownloadUrl,
-            signer: certDocument.user ? {
-              id: certDocument.user.id,
-              name: certDocument.user.name,
-              email: certDocument.user.email,
-              institution: certDocument.user.institution
-            } : null,
-            metadata: certDocument.metadata
-          },
-          uploadedPdfInfo: pdfMetadata,
-          matchType: 'certificate_id',
-          securityInfo: {
-            verificationMethod: 'filename_certificate_id',
-            confidenceScore: 0.8,
-            timestamp: new Date().toISOString(),
-            documentHash: calculatedHash,
-            originalHash: certDocument.fileHash,
-            hashMatch: calculatedHash === certDocument.fileHash
-          }
+          verified: false,
+          isOriginalVersion: true,
+          message: "This appears to be the original unsigned version of a document that has been signed",
+          documentId: document.id,
+          signedDocumentUrl: document.signedPdfUrl || document.driveViewUrl,
+          calculatedHash: calculatedHash,
+          storedOriginalHash: document.fileHash,
+          storedSignedHash: document.signedFileHash
         }, { status: 200 });
       }
     }
     
-    // Log failed verification attempt
-    await logVerificationAttempt(
-      { verified: false },
-      calculatedHash,
-      ipAddress,
-      userAgent
+    if (!document) {
+      console.log(`No document found with hash: ${calculatedHash.substring(0, 16)}...`);
+      return NextResponse.json({
+        verified: false,
+        message: "Document not found or has not been signed",
+        calculatedHash: calculatedHash,
+        uploadedPdfInfo: pdfMetadata
+      }, { status: 200 });
+    }
+    
+    // This is the properly signed document - continue with signature verification
+    const signatureVerification = await verifySignature(
+      document.fileHash, // Use the original file hash for signature verification
+      document.signature,
+      document.publicKey,
+      document.algorithm,
+      document.timestamp ? document.timestamp.toISOString() : null
     );
     
-    // Document not found in our system
+    if (!signatureVerification.valid) {
+      console.warn(`Signature verification failed for document: ${document.id}`);
+      return NextResponse.json({
+        verified: false,
+        message: "Document found but signature verification failed",
+        error: signatureVerification.error,
+        calculatedHash: calculatedHash,
+        storedHash: document.fileHash,
+        documentId: document.id,
+        uploadedPdfInfo: pdfMetadata
+      }, { status: 200 });
+    }
+    
+    console.log(`Document verified successfully. ID: ${document.id}, Method: ${signatureVerification.method}`);
+    
+    // Prepare a detailed response with comprehensive metadata
+    const documentInfo = {
+      // Basic document information
+      id: document.id,
+      certificateId: document.certificateId,
+      fileName: document.fileName,
+      fileHash: document.fileHash,
+      algorithm: document.algorithm,
+      timestamp: document.timestamp || document.createdAt,
+      
+      // URLs and links
+      qrCodeUrl: document.qrCodeUrl,
+      signedPdfUrl: document.driveViewUrl || document.signedPdfUrl,
+      driveFileId: document.driveFileId,
+      driveViewUrl: document.driveViewUrl,
+      driveDownloadUrl: document.driveDownloadUrl,
+      
+      // Signer information
+      signer: document.user ? {
+        id: document.user.id,
+        name: document.user.name,
+        email: document.user.email,
+        institution: document.user.institution
+      } : null,
+      
+      // Full metadata with AI analysis properly mapped
+      metadata: {
+        ...document.metadata,
+        aiAnalysis: document.metadata?.analysis || null
+      }
+    };
+    
     return NextResponse.json({
-      verified: false,
-      message: 'Document has not been signed or is not in our records',
+      verified: true,
+      message: `Document verified successfully using ${signatureVerification.method}`,
+      documentInfo: documentInfo,
       uploadedPdfInfo: pdfMetadata,
-      securityInfo: {
-        attemptedVerificationMethods: [
-          'direct_hash_match',
-          'qr_code_extraction',
-          'enhanced_metadata_matching',
-          'filename_certificate_id'
-        ],
-        timestamp: new Date().toISOString()
+      verificationDetails: {
+        method: signatureVerification.method,
+        calculatedHash: calculatedHash,
+        matchesStoredHash: calculatedHash === document.fileHash
       }
     }, { status: 200 });
-    
   } catch (error) {
     console.error("Error verifying document:", error);
     return NextResponse.json(
@@ -614,7 +335,187 @@ export async function POST(req) {
   }
 }
 
-// The GET endpoint implementation remains unchanged
+// Update the GET endpoint for more robust certificate ID verification
+
 export async function GET(req) {
-  // Existing code for GET endpoint...
+  try {
+    // Get the certificate ID or file hash from query parameters
+    const { searchParams } = new URL(req.url);
+    const certificateId = searchParams.get("certificateId");
+    const fileHash = searchParams.get("fileHash");
+
+    // Add detailed logging for debugging
+    console.log("Document verification request:", {
+      certificateId: certificateId || "(none)",
+      fileHash: fileHash ? `${fileHash.substring(0, 8)}...` : "(none)"
+    });
+
+    if (!certificateId && !fileHash) {
+      return NextResponse.json(
+        { error: "Either certificateId or fileHash is required" },
+        { status: 400 }
+      );
+    }
+
+    // Normalize IDs for better matching (trim, fix case sensitivity)
+    const normalizedCertId = certificateId ? certificateId.trim().toUpperCase() : "";
+    const normalizedFileHash = fileHash ? fileHash.trim().toLowerCase() : "";
+
+    console.log(`Looking up document with certificateId: ${normalizedCertId || '(none)'}`);
+
+    // Find the document by certificate ID or file hash with normalized values
+    const document = await prisma.document.findFirst({
+      where: {
+        OR: [
+          normalizedCertId ? { 
+            certificateId: {
+              equals: normalizedCertId,
+              mode: 'insensitive' // Make case-insensitive if your DB supports it
+            }
+          } : {},
+          normalizedFileHash ? { fileHash: normalizedFileHash } : {}
+        ]
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            institution: true,
+          }
+        }
+      }
+    });
+
+    if (!document) {
+      console.log("No document found with the provided identifier");
+      
+      // Perform a broader search to help diagnose issues
+      let diagnosticInfo = {};
+      
+      if (certificateId) {
+        // Look for similar certificate IDs to help diagnose case/format issues
+        const similarCertificates = await prisma.document.findMany({
+          where: {
+            certificateId: {
+              contains: certificateId.substring(5, 10), // Look for a substring match
+              mode: 'insensitive'
+            }
+          },
+          select: { certificateId: true },
+          take: 5
+        });
+        
+        diagnosticInfo.similarCertificateIds = similarCertificates.map(d => d.certificateId);
+      }
+      
+      return NextResponse.json(
+        { 
+          verified: false, 
+          message: "Document not found",
+          query: {
+            certificateId: normalizedCertId || null,
+            fileHash: normalizedFileHash ? `${normalizedFileHash.substring(0, 8)}...` : null
+          },
+          diagnostic: diagnosticInfo
+        },
+        { status: 200 }
+      );
+    }
+
+    console.log(`Document found. ID: ${document.id}, CertificateID: ${document.certificateId}`);
+    
+    // Enhanced security: Verify the signature cryptographically
+    // This adds an extra security layer to certificate ID lookup
+    const signatureVerification = await verifySignature(
+      document.fileHash,
+      document.signature,
+      document.publicKey,
+      document.algorithm,
+      document.timestamp ? document.timestamp.toISOString() : null
+    );
+    
+    // If signature verification fails, return warning but still return the document
+    // This alerts the user that while the cert ID exists, there may be security issues
+    if (!signatureVerification.valid) {
+      console.warn(`⚠️ Signature verification failed for document: ${document.id}`);
+      
+      return NextResponse.json({
+        verified: true,
+        signedBy: document.user.name,
+        securityWarning: "Document found but signature verification failed. This could indicate tampering.",
+        documentInfo: {
+          id: document.id,
+          fileName: document.fileName,
+          fileHash: document.fileHash,
+          certificateId: document.certificateId,
+          algorithm: document.algorithm,
+          signatureStatus: "INVALID",
+          timestamp: document.timestamp,
+          signedPdfUrl: document.signedPdfUrl || document.driveViewUrl,
+          metadata: {
+            ...document.metadata,
+            aiAnalysis: document.metadata?.analysis || null
+          },
+          signer: {
+            name: document.user.name,
+            email: document.user.email,
+            institution: document.user.institution,
+          }
+        },
+        securityNotice: "WARNING: This document was found by ID only. Upload the actual document for full verification."
+      });
+    }
+
+    console.log(`Document signature verified successfully using method: ${signatureVerification.method}`);
+    
+    // Format the response with correct mapping for AI analysis
+    const response = {
+      verified: true,
+      signedBy: document.user.name,
+      documentInfo: {
+        id: document.id,
+        fileName: document.fileName,
+        fileHash: document.fileHash,
+        signedFileHash: document.signedFileHash,
+        certificateId: document.certificateId,
+        algorithm: document.algorithm,
+        signature: document.signature,
+        timestamp: document.timestamp,
+        signedPdfUrl: document.signedPdfUrl || document.driveViewUrl,
+        driveFileId: document.driveFileId,
+        driveViewUrl: document.driveViewUrl,
+        driveDownloadUrl: document.driveDownloadUrl,
+        metadata: {
+          ...document.metadata,
+          // Map analysis to aiAnalysis to match UI expectations
+          aiAnalysis: document.metadata.analysis 
+        },
+        signer: {
+          name: document.user.name,
+          email: document.user.email,
+          institution: document.user.institution,
+        }
+      },
+      securityDetails: {
+        verificationMethod: signatureVerification.method,
+        identifierUsed: certificateId ? "certificateId" : "fileHash",
+        signatureVerified: true
+      },
+      securityNotice: "For complete cryptographic verification, please upload the actual document."
+    };
+
+    return NextResponse.json(response);
+  } catch (error) {
+    console.error("Error verifying document:", error);
+    return NextResponse.json(
+      { 
+        error: "Failed to verify document", 
+        message: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined 
+      },
+      { status: 500 }
+    );
+  }
 }

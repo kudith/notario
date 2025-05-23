@@ -75,12 +75,12 @@ export default function RootLayout({ children }) {
             enableSystem
             disableTransitionOnChange
           >
-            <Toaster />
             <MyNavbar />
             <main className="flex-grow">
               {children}
             </main>
             <Footer />
+            <Toaster />
           </ThemeProvider>
         </AuthProvider>
       </body>

@@ -106,29 +106,17 @@ export async function POST(req) {
         minute: '2-digit'
       });
       
-      // Create verification URL
-      const verifyUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/verify/${document.certificateId}`;
+      // Create direct verification URL using file hash (not certificate ID)
+      const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+      const verifyUrl = `${baseUrl}/verify/${document.certificateId}`;
       
-      // Create metadata object to encode in QR code
-      const metadataForQR = {
-        documentId: document.certificateId,
-        signedBy: session.user.name || 'Unnamed User',
-        email: session.user.email || 'No Email',
-        timestamp: formattedDate,
-        fileName: document.fileName || 'Unknown',
-        fileHash: document.fileHash.substring(0, 20),
-        verifyUrl: verifyUrl
-      };
-      
-      // Convert metadata to JSON string
-      const metadataJSON = JSON.stringify(metadataForQR);
-      
-      // Generate QR code with embedded metadata
+      // Replace JSON metadata with direct URL for the QR code
+      // This ensures that when scanned, it opens the verify page directly
       const qrCodeBase64 = data.qrCodeDataUrl.split(',')[1];
       const qrBuffer = Buffer.from(qrCodeBase64, 'base64');
       
-      // Alternatively, generate a new QR code with the metadata
-      // const qrBuffer = await QRCode.toBuffer(metadataJSON, {
+      // Or generate a new QR code with the direct URL (if you want to replace existing QR code):
+      // const qrBuffer = await QRCode.toBuffer(verifyUrl, {
       //   errorCorrectionLevel: 'M',
       //   scale: 4,
       //   margin: 2
@@ -255,4 +243,4 @@ export async function POST(req) {
       { status: 500 }
     );
   }
-} 
+}
