@@ -506,8 +506,10 @@ export default function SignaturePanel({ fileHash, onSignatureGenerated, userPub
             </p>
           )}
         </div>
-        
-        {renderContent()}
+
+        <div className="flex flex-col gap-4 sm:gap-6">
+          {renderContent()}
+        </div>
       </CardContent>
     </Card>
   );

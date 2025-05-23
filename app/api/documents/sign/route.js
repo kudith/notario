@@ -6,6 +6,7 @@ import { PDFDocument, rgb } from "pdf-lib";
 import QRCode from "qrcode";
 import { uploadPdfToDrive } from "@/lib/google-drive";
 import crypto from "crypto";
+import { detectSignatureArea } from "@/lib/pdf-signature-area";
 
 // Helper functions
 async function calculateFileHash(buffer) {
@@ -445,60 +446,25 @@ function generateCertificateId() {
 async function addQRCodeToPdf(pdfBuffer, certificateId, fileHash, options = {}) {
   try {
     const pdfDoc = await PDFDocument.load(pdfBuffer);
-    
-    // Get the last page or specified page
-    const pageIndex = options.pageIndex || pdfDoc.getPageCount() - 1;
+    const pageIndex = pdfDoc.getPageCount() - 1;
     const page = pdfDoc.getPage(pageIndex);
-    
+
+    // Deteksi posisi tanda tangan otomatis
+    let { x, y } = await detectSignatureArea(pdfBuffer);
+
+    const qrSize = 100;
+
     // Create verification URL with certificateId (shorter and more user-friendly)
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
     const verifyUrl = `${baseUrl}/verify/${certificateId}`;
-    
-    // Generate QR code with direct URL
     const qrCodeBuffer = await QRCode.toBuffer(verifyUrl, {
       errorCorrectionLevel: 'M',
       margin: 2,
       scale: 4
     });
-    
-    // Embed the QR code in the PDF
     const qrCodeImage = await pdfDoc.embedPng(qrCodeBuffer);
-    
-    // Determine position based on options or default to bottom right
-    const { width, height } = page.getSize();
-    const qrSize = 100;  // QR code size
-    
-    let x, y;
-    const position = options.position || 'bottom-right';
-    
-    switch(position) {
-      case 'top-left':
-        x = 50;
-        y = height - qrSize - 50;
-        break;
-      case 'top-right':
-        x = width - qrSize - 50;
-        y = height - qrSize - 50;
-        break;
-      case 'bottom-left':
-        x = 50;
-        y = 50;
-        break;
-      case 'bottom-center':
-        x = (width - qrSize) / 2;
-        y = 50;
-        break;
-      case 'top-center':
-        x = (width - qrSize) / 2;
-        y = height - qrSize - 50;
-        break;
-      case 'bottom-right':
-      default:
-        x = width - qrSize - 50;
-        y = 50;
-    }
-    
-    // Add background rectangle for the QR code
+
+    // Draw background rectangle (optional)
     page.drawRectangle({
       x: x - 5,
       y: y - 5,
@@ -509,16 +475,16 @@ async function addQRCodeToPdf(pdfBuffer, certificateId, fileHash, options = {}) 
       borderWidth: 1,
       opacity: 0.9
     });
-    
-    // Draw the QR code
+
+    // Draw QR code
     page.drawImage(qrCodeImage, {
       x,
       y,
       width: qrSize,
       height: qrSize
     });
-    
-    // Add verification text
+
+    // Draw text below QR code (optional)
     const fontSize = 8;
     page.drawText(`Verified: ${new Date().toLocaleDateString()}`, {
       x,
@@ -526,15 +492,13 @@ async function addQRCodeToPdf(pdfBuffer, certificateId, fileHash, options = {}) 
       size: fontSize,
       color: rgb(0.2, 0.2, 0.2)
     });
-    
     page.drawText(`Certificate ID: ${certificateId}`, {
       x,
       y: y - 25,
       size: fontSize,
       color: rgb(0.2, 0.2, 0.2)
     });
-    
-    // Save the modified PDF
+
     const modifiedPdfBytes = await pdfDoc.save();
     return Buffer.from(modifiedPdfBytes);
   } catch (error) {

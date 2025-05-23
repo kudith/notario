@@ -493,14 +493,14 @@ export default function SignPage() {
     ];
     
     return (
-      <div className="flex items-center justify-center mb-8">
+      <div className="flex flex-wrap items-center justify-center mb-8 px-2 gap-y-4">
         {steps.map((step, index) => (
           <div key={step.key} className="flex items-center">
             <motion.div 
               className={`flex items-center justify-center w-10 h-10 rounded-full border ${
                 activeTab === step.key 
                   ? "bg-primary text-primary-foreground border-primary" 
-                  : "bg-secondary text-muted-foreground border-border"
+                  : "bg-secondary/40 text-muted-foreground border-border"
               } ${activeTab !== step.key && index < steps.findIndex(s => s.key === activeTab) ? "bg-primary/20 border-primary/30" : ""}`}
               animate={{
                 backgroundColor: activeTab === step.key ? 'var(--primary)' : index < steps.findIndex(s => s.key === activeTab) ? 'rgba(var(--primary-rgb), 0.2)' : 'var(--secondary)',
@@ -512,13 +512,17 @@ export default function SignPage() {
             >
               {index + 1}
             </motion.div>
-            <span className={`mx-2 text-sm ${activeTab === step.key ? "font-medium text-foreground" : "text-muted-foreground"} flex items-center`}>
+            <span className={`mx-2 text-sm ${activeTab === step.key ? "font-medium text-foreground" : "text-muted-foreground"} hidden sm:flex items-center`}>
               {step.icon}
+              {step.label}
+            </span>
+            {/* Tampilkan hanya label pada mobile tanpa icon */}
+            <span className={`mx-2 text-xs ${activeTab === step.key ? "font-medium text-foreground" : "text-muted-foreground"} sm:hidden`}>
               {step.label}
             </span>
             {index < steps.length - 1 && (
               <motion.div 
-                className="w-12 h-px mx-1"
+                className="w-6 sm:w-12 h-px mx-1"
                 animate={{
                   backgroundColor: index < steps.findIndex(s => s.key === activeTab) 
                     ? 'rgba(var(--primary-rgb), 0.4)' 
@@ -830,8 +834,8 @@ export default function SignPage() {
                           className="mb-6"
                         >
                           <Card className="border-border bg-secondary/10">
-                            <CardContent className="p-4 flex items-center justify-between">
-                              <div className="flex items-center">
+                            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                              <div className="flex items-start sm:items-center">
                                 <div className="mr-4 bg-primary/10 p-2 rounded-full">
                                   <Sparkles className="h-5 w-5 text-primary" />
                                 </div>
@@ -845,7 +849,7 @@ export default function SignPage() {
                               <Button 
                                 onClick={handleManualAnalysis}
                                 disabled={isAnalyzing}
-                                className="flex items-center gap-1.5"
+                                className="w-full sm:w-auto flex items-center gap-1.5"
                               >
                                 <Brain className="h-4 w-4" />
                                 Analyze Document
@@ -867,7 +871,7 @@ export default function SignPage() {
                       </motion.div>
                       
                       <motion.div 
-                        className="flex justify-between mt-8"
+                        className="flex flex-col-reverse sm:flex-row sm:justify-between gap-3 mt-8"
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, delay: 0.5 }}
@@ -875,18 +879,19 @@ export default function SignPage() {
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <div>
+                              <div className="w-full sm:w-auto">
                                 <Button 
                                   variant="outline"
                                   size="sm"
-                                  className="flex items-center"
+                                  className="w-full sm:w-auto flex items-center justify-center"
                                   as="a" 
                                   href="https://notar.io/docs/document-signing" 
                                   target="_blank"
                                   rel="noopener noreferrer"
                                 >
                                   <Info className="h-4 w-4 mr-1.5" />
-                                  Learn about digital signatures
+                                  <span className="hidden xs:inline">Learn about digital signatures</span>
+                                  <span className="xs:hidden">Learn more</span>
                                   <ExternalLink className="h-3 w-3 ml-1.5 text-muted-foreground" />
                                 </Button>
                               </div>
@@ -900,7 +905,7 @@ export default function SignPage() {
                         <Button 
                           onClick={goToNextTab} 
                           disabled={!fileHash}
-                          className={`px-5 py-2 h-auto ${buttonHoverClass}`}
+                          className={`w-full sm:w-auto px-5 py-2 h-auto ${buttonHoverClass}`}
                         >
                           Next Step <ArrowRight className="ml-2 h-4 w-4" />
                         </Button>
@@ -1000,7 +1005,7 @@ export default function SignPage() {
                   </motion.div>
                   
                   <motion.div 
-                    className="flex justify-between mt-8"
+                    className="flex flex-col-reverse sm:flex-row sm:justify-between gap-3 mt-8"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: 0.3 }}
@@ -1008,15 +1013,14 @@ export default function SignPage() {
                     <Button
                       variant="outline"
                       onClick={() => setActiveTab("upload")}
-                      className="px-5 py-2 h-auto"
+                      className="w-full sm:w-auto px-5 py-2 h-auto"
                     >
                       Back
                     </Button>
-                    
                     <Button 
                       onClick={openSignDialog} 
                       disabled={!signature}
-                      className={`px-5 py-2 h-auto ${buttonHoverClass}`}
+                      className={`w-full sm:w-auto px-5 py-2 h-auto ${buttonHoverClass}`}
                     >
                       Sign Document <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
@@ -1344,7 +1348,7 @@ export default function SignPage() {
             </div>
           </div>
           
-          <DialogFooter>
+          <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             {signingProgress >= 100 && !isProcessing && (
               <Button
                 onClick={() => setIsSignDialogOpen(false)}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import DocumentVerifier from "@/components/document-verifier";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -35,7 +35,8 @@ import {
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 
-export default function VerifyPage() {
+// Component yang menggunakan useSearchParams dibungkus dalam komponen terpisah
+function VerifyPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [certificateId, setCertificateId] = useState("");
@@ -135,21 +136,20 @@ export default function VerifyPage() {
         <p className="text-muted-foreground">
           Verifying document from QR code...
         </p>
-        {/* <Toaster richColors position="top-center" /> */}
       </div>
     );
   }
 
   return (
-    <div className="content-container">
+    <div className="content-container px-4 sm:px-6">
       <div className="flex flex-col items-center mb-8 text-center">
         <div className="feature-icon mb-4">
           <FileCheck className="h-6 w-6" />
         </div>
-        <h1 className="text-3xl font-bold tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
           Document Verification
         </h1>
-        <p className="text-muted-foreground max-w-2xl mt-2">
+        <p className="text-muted-foreground max-w-2xl mt-2 text-sm sm:text-base">
           Verify the authenticity of documents signed with Notario. Upload a
           document, scan a QR code, or enter a certificate ID.
         </p>
@@ -158,8 +158,8 @@ export default function VerifyPage() {
       {/* Display verification results from QR code scan or certificate ID search */}
       {searchResult && (
         <Card className="document-card mb-8 border border-primary/20">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+          <CardHeader className="px-4 sm:px-6">
+            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
               {searchResult.verified ? (
                 <>
                   <FileCheck className="h-5 w-5 text-primary" />
@@ -180,63 +180,67 @@ export default function VerifyPage() {
           </CardHeader>
 
           {searchResult.verified && searchResult.documentInfo && (
-            <CardContent>
+            <CardContent className="px-4 sm:px-6">
               <Tabs defaultValue="basic">
                 <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                  <TabsTrigger value="document">Document</TabsTrigger>
-                  <TabsTrigger value="signer">Signer</TabsTrigger>
+                  <TabsTrigger value="basic" className="text-xs sm:text-sm">Basic Info</TabsTrigger>
+                  <TabsTrigger value="document" className="text-xs sm:text-sm">Document</TabsTrigger>
+                  <TabsTrigger value="signer" className="text-xs sm:text-sm">Signer</TabsTrigger>
                 </TabsList>
 
                 {/* Basic Tab */}
                 <TabsContent value="basic" className="space-y-4 mt-4">
-                  <div className="bg-card border border-primary/20 p-4 rounded-md">
+                  <div className="bg-card border border-primary/20 p-3 sm:p-4 rounded-md">
                     <div className="flex items-center gap-2 mb-3">
-                      <div className="feature-icon w-8 h-8 mb-0">
+                      <div className="feature-icon w-7 sm:w-8 h-7 sm:h-8 mb-0">
                         <FileCheck className="h-4 w-4" />
                       </div>
-                      <h3 className="text-xl font-medium text-primary">
+                      <h3 className="text-lg sm:text-xl font-medium text-primary">
                         Document Verified
                       </h3>
                     </div>
-                    <p className="text-muted-foreground mb-4">
+                    <p className="text-muted-foreground mb-4 text-sm">
                       This document is authentic and has been signed using
                       Notario.
                     </p>
 
-                    <div className="data-grid mt-4">
-                      <dt>Certificate ID:</dt>
-                      <dd className="font-mono text-sm">
+                    <div className="grid grid-cols-1 gap-y-2 sm:grid-cols-[1fr_2fr] sm:gap-y-3 mt-4">
+                      <div className="text-sm font-medium">Certificate ID:</div>
+                      <div className="font-mono text-xs sm:text-sm overflow-hidden text-ellipsis">
                         {searchResult.documentInfo.certificateId}
-                      </dd>
+                      </div>
 
-                      <dt>Document Name:</dt>
-                      <dd>{searchResult.documentInfo.fileName}</dd>
+                      <div className="text-sm font-medium">Document Name:</div>
+                      <div className="text-sm truncate">
+                        {searchResult.documentInfo.fileName}
+                      </div>
 
-                      <dt>Signed Date:</dt>
-                      <dd>{formatDate(searchResult.documentInfo.timestamp)}</dd>
+                      <div className="text-sm font-medium">Signed Date:</div>
+                      <div className="text-sm">
+                        {formatDate(searchResult.documentInfo.timestamp)}
+                      </div>
 
                       {searchResult.documentInfo.metadata?.documentType && (
                         <>
-                          <dt>Document Type:</dt>
-                          <dd className="capitalize">
+                          <div className="text-sm font-medium">Document Type:</div>
+                          <div className="text-sm capitalize">
                             {searchResult.documentInfo.metadata.documentType}
                             {searchResult.documentInfo.metadata.documentSubject
                               ? ` - ${searchResult.documentInfo.metadata.documentSubject}`
                               : ""}
-                          </dd>
+                          </div>
                         </>
                       )}
 
-                      <dt>Hash Algorithm:</dt>
-                      <dd className="font-mono text-xs break-all hash-code">
+                      <div className="text-sm font-medium">Hash Algorithm:</div>
+                      <div className="font-mono text-xs break-all hash-code">
                         SHA-256
-                      </dd>
+                      </div>
 
-                      <dt>Signature:</dt>
-                      <dd className="font-mono text-xs break-all hash-code">
+                      <div className="text-sm font-medium">Signature:</div>
+                      <div className="font-mono text-xs break-all hash-code">
                         {searchResult.documentInfo.algorithm}
-                      </dd>
+                      </div>
                     </div>
 
                     {searchResult.documentInfo.signedPdfUrl && (
@@ -244,7 +248,7 @@ export default function VerifyPage() {
                         <Button
                           asChild
                           variant="outline"
-                          className="btn-outline w-full"
+                          className="btn-outline w-full sm:max-w-xs mx-auto block"
                         >
                           <a
                             href={searchResult.documentInfo.signedPdfUrl}
@@ -265,7 +269,7 @@ export default function VerifyPage() {
                         onClick={() =>
                           (window.location.href = `/verify/${searchResult.documentInfo.certificateId}`)
                         }
-                        className="text-primary"
+                        className="text-primary text-sm"
                       >
                         View Full Verification Details
                       </Button>
@@ -275,13 +279,13 @@ export default function VerifyPage() {
 
                 {/* Document Tab */}
                 <TabsContent value="document" className="space-y-4 mt-4">
-                  <div className="document-card">
-                    <h3 className="font-medium text-lg flex items-center mb-4">
-                      <FileText className="h-5 w-5 mr-2 text-primary" />
+                  <div className="document-card p-3 sm:p-4 border border-border rounded-md">
+                    <h3 className="font-medium text-base sm:text-lg flex items-center mb-4">
+                      <FileText className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-primary" />
                       Document Details
                     </h3>
 
-                    <div className="data-grid">
+                    <div className="grid grid-cols-1 gap-y-2 sm:grid-cols-[1fr_2fr] sm:gap-y-3">
                       {searchResult.documentInfo.metadata?.documentSubject && (
                         <>
                           <dt>Subject:</dt>
@@ -333,27 +337,27 @@ export default function VerifyPage() {
                     </div>
                   </div>
 
-                  {/* AI Analysis Summary */}
+                  {/* AI Analysis Summary with responsive changes */}
                   {searchResult.documentInfo.metadata?.aiAnalysis && (
-                    <div className="document-card">
+                    <div className="document-card border border-border rounded-md">
                       <Accordion type="single" collapsible>
-                        <AccordionItem value="ai-summary">
-                          <AccordionTrigger className="flex items-center gap-2">
+                        <AccordionItem value="ai-summary" className="border-none">
+                          <AccordionTrigger className="flex items-center gap-2 px-3 sm:px-4 py-3">
                             <span className="flex items-center">
                               <AlignLeft className="h-4 w-4 mr-2 text-primary" />
-                              AI Document Analysis
+                              <span className="text-sm">AI Document Analysis</span>
                             </span>
                             {searchResult.documentInfo.metadata.aiAnalysis
                               .enabled && (
                               <Badge
                                 variant="outline"
-                                className="status-verified ml-2"
+                                className="status-verified ml-1 sm:ml-2 text-xs"
                               >
                                 AI Analyzed
                               </Badge>
                             )}
                           </AccordionTrigger>
-                          <AccordionContent className="space-y-4 pt-3">
+                          <AccordionContent className="space-y-4 pt-2 px-3 sm:px-4 pb-4">
                             {/* Summary */}
                             {searchResult.documentInfo.metadata.aiAnalysis
                               .summary && (
@@ -479,7 +483,7 @@ export default function VerifyPage() {
                   )}
                 </TabsContent>
 
-                {/* Signer Tab */}
+                {/* Signer Tab with responsive changes */}
                 <TabsContent value="signer" className="space-y-4 mt-4">
                   <div className="document-card">
                     <h3 className="font-medium text-lg flex items-center mb-4">
@@ -576,7 +580,11 @@ export default function VerifyPage() {
 
               {/* Button to start new verification */}
               <div className="mt-6 text-center">
-                <Button onClick={() => setSearchResult(null)} variant="outline">
+                <Button 
+                  onClick={() => setSearchResult(null)} 
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                >
                   Verify Another Document
                 </Button>
               </div>
@@ -585,18 +593,18 @@ export default function VerifyPage() {
 
           {/* Show error card if verification failed */}
           {searchResult && !searchResult.verified && (
-            <CardContent>
-              <div className="bg-destructive/5 p-4 rounded-md border border-destructive/30">
+            <CardContent className="px-4 sm:px-6">
+              <div className="bg-destructive/5 p-3 sm:p-4 rounded-md border border-destructive/30">
                 <h3 className="font-medium text-destructive mb-2">
                   Verification Failed
                 </h3>
-                <p className="text-muted-foreground text-sm">
+                <p className="text-muted-foreground text-xs sm:text-sm">
                   {searchResult.message ||
                     "The document could not be verified. It may not exist in our system."}
                 </p>
                 <Button
                   variant="outline"
-                  className="mt-4"
+                  className="mt-4 w-full sm:w-auto"
                   onClick={() => setSearchResult(null)}
                 >
                   Try Again
@@ -610,13 +618,13 @@ export default function VerifyPage() {
       {/* Only show the verification options if there's no result yet */}
       {!searchResult && (
         <Card className="document-card mb-8">
-          <CardHeader>
+          <CardHeader className="px-4 sm:px-6">
             <CardTitle>Verify Document</CardTitle>
             <CardDescription>
               Choose how you want to verify your document
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 sm:px-6">
             <Tabs
               value={activeTab}
               onValueChange={setActiveTab}
@@ -632,9 +640,9 @@ export default function VerifyPage() {
               </TabsContent>
 
               <TabsContent value="certificate" className="space-y-4 pt-4">
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <Input
-                    placeholder="Enter certificate ID (e.g. CERT-1234567890)"
+                    placeholder="Enter certificate ID"
                     value={certificateId}
                     onChange={(e) => setCertificateId(e.target.value)}
                     className="form-input flex-1"
@@ -642,7 +650,7 @@ export default function VerifyPage() {
                   <Button
                     onClick={handleCertificateSearch}
                     disabled={isSearching}
-                    className="btn-primary"
+                    className="btn-primary mt-2 sm:mt-0 w-full sm:w-auto"
                   >
                     {isSearching ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -655,7 +663,7 @@ export default function VerifyPage() {
               </TabsContent>
             </Tabs>
           </CardContent>
-          <CardFooter className="border-t border-border pt-4 text-sm text-muted-foreground">
+          <CardFooter className="border-t border-border pt-4 text-xs sm:text-sm text-muted-foreground px-4 sm:px-6">
             <p>
               Notario uses advanced cryptographic techniques to ensure document
               authenticity and integrity.
@@ -665,39 +673,39 @@ export default function VerifyPage() {
       )}
 
       <Card className="document-card">
-        <CardHeader>
+        <CardHeader className="px-4 sm:px-6">
           <CardTitle>How Verification Works</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 border border-border rounded-md bg-card">
+        <CardContent className="space-y-6 px-4 sm:px-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="p-3 sm:p-4 border border-border rounded-md bg-card">
               <div className="feature-icon">
                 <FileText className="h-5 w-5" />
               </div>
               <h3 className="font-medium mb-2">1. Document Hash</h3>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 Each document is processed with a secure SHA-256 algorithm to
                 generate a unique cryptographic fingerprint.
               </p>
             </div>
 
-            <div className="p-4 border border-border rounded-md bg-card">
+            <div className="p-3 sm:p-4 border border-border rounded-md bg-card">
               <div className="feature-icon">
                 <UserCircle className="h-5 w-5" />
               </div>
               <h3 className="font-medium mb-2">2. Digital Signature</h3>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 The document is cryptographically signed using RSA
                 public/private key pairs to ensure authenticity.
               </p>
             </div>
 
-            <div className="p-4 border border-border rounded-md bg-card">
+            <div className="p-3 sm:p-4 border border-border rounded-md bg-card">
               <div className="feature-icon">
                 <Search className="h-5 w-5" />
               </div>
               <h3 className="font-medium mb-2">3. Secure Database</h3>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 Document signatures and metadata are securely stored in our
                 database for future verification and validation.
               </p>
@@ -705,8 +713,25 @@ export default function VerifyPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* <Toaster richColors position="top-center" /> */}
     </div>
+  );
+}
+
+// Loading fallback untuk Suspense
+function LoadingFallback() {
+  return (
+    <div className="content-container flex flex-col items-center justify-center py-20">
+      <Loader2 className="h-12 w-12 text-primary animate-spin mb-4" />
+      <p className="text-muted-foreground">Loading verification page...</p>
+    </div>
+  );
+}
+
+// Main component yang membungkus dengan Suspense
+export default function VerifyPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <VerifyPageContent />
+    </Suspense>
   );
 }

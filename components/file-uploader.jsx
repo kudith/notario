@@ -578,20 +578,39 @@ export default function FileUploader({ onFileUploaded, initialFile = null, readO
                 </div>
                 
                 {/* PDF Viewer */}
-                <div className="pdf-viewer-container bg-background">
-                  <iframe 
-                    key={pdfKey}
-                    ref={iframeRef}
-                    src={getPdfViewerUrl()}
-                    className="w-full h-[450px]"
-                    title="PDF Preview"
-                    onLoad={handleIframeLoad}
-                    style={{
-                      transform: `rotate(${rotation}deg)`,
-                      transformOrigin: 'center center',
-                      transition: 'transform 0.3s ease'
-                    }}
-                  />
+                <div className="pdf-viewer-container bg-background relative">
+                  {/* Wrapper div dengan rasio tetap dan responsif */}
+                  <div className="w-full relative" style={{
+                    paddingBottom: rotation === 90 || rotation === 270 ? '100%' : '75%',
+                    minHeight: '250px'
+                  }}>
+                    <iframe 
+                      key={pdfKey}
+                      ref={iframeRef}
+                      src={getPdfViewerUrl()}
+                      className="absolute top-0 left-0 w-full h-full border-0 overflow-hidden"
+                      title="PDF Preview"
+                      onLoad={handleIframeLoad}
+                      style={{
+                        transform: `rotate(${rotation}deg)`,
+                        transformOrigin: 'center center',
+                        transition: 'transform 0.3s ease'
+                      }}
+                    />
+                  </div>
+                  
+                  {/* Mobile fallback untuk browser yang tidak mendukung iframe PDF */}
+                  <div className="pdf-mobile-fallback hidden sm:hidden">
+                    <a 
+                      href={pdfUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="absolute bottom-2 right-2 bg-primary text-primary-foreground text-xs px-2.5 py-1 rounded-md flex items-center gap-1 opacity-80 hover:opacity-100 shadow-sm"
+                    >
+                      <FileText className="h-3 w-3" />
+                      Open PDF
+                    </a>
+                  </div>
                 </div>
                 
                 {/* Show AI analysis results if available */}
