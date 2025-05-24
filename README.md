@@ -234,7 +234,7 @@ sequenceDiagram
 ## 📋 Prerequisites
 
 - Node.js 16.x or later
-- PostgreSQL database
+- MongoDB
 - Cloudflare R2 account (or alternative storage)
 - Google Gemini API key
 - Python FastAPI QR service running (for QR placement)
