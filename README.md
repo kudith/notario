@@ -8,7 +8,7 @@ A secure digital signature platform developed as part of an Information Security
 
 Notario is a Next.js-based application that provides end-to-end document signing solutions with a focus on cryptographic security, flexible signature algorithms, and intelligent document analysis. The platform enables users to:
 
-- Digitally sign PDF documents using **both RSA and ECDSA cryptographic algorithms**
+- Digitally sign PDF documents using **RSA or ECDSA cryptographic algorithms**
 - Choose the appropriate signature algorithm based on security requirements
 - Automatically analyze document content using Google's Gemini AI
 - Extract key information like document type, parties involved, and important dates
