@@ -21,7 +21,7 @@ Notario is a Next.js-based application that provides end-to-end document signing
 
 This repository was developed as part of an Information Security course project to demonstrate practical implementation of:
 
-- Multiple digital signature cryptographic algorithms (RSA and ECDSA)
+- Digital signature cryptographic algorithms (RSA or ECDSA)
 - Document integrity verification
 - Certificate-based authentication
 - Secure document workflows
