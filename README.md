@@ -1,4 +1,4 @@
-# Notario - Dual-Algorithm Digital Document Signing Platform
+# Notario - Digital Document Signing Platform
 
 A secure digital signature platform developed as part of an Information Security course project. Notario enables users to cryptographically sign documents using **RSA or ECDSA algorithms**, automatically analyze document content with AI, add verification QR codes, and verify document authenticity.
 
