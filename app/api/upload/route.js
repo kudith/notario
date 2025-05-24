@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { uploadFileToR2 } from '@/lib/r2-storage';
+import { uploadPdfToR2 } from '@/lib/r2-storage';
 
 export async function POST(req) {
   try {
@@ -30,7 +30,7 @@ export async function POST(req) {
     const buffer = await file.arrayBuffer();
     
     // Upload to R2 Storage
-    const result = await uploadFileToR2(Buffer.from(buffer), file.name);
+    const result = await uploadPdfToR2(Buffer.from(buffer), file.name);
     
     return NextResponse.json({ 
       url: result.viewUrl,

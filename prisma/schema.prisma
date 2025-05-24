@@ -40,10 +40,10 @@ model Document {
   qrCodeUrl     String?
   signedPdfUrl  String?  // URL to the signed PDF with QR code
   
-  // Google Drive fields
-  driveFileId   String?  // Google Drive file ID
-  driveViewUrl  String?  // Google Drive webViewLink
-  driveDownloadUrl String? // Google Drive webContentLink
+  // r2
+  driveFileId   String?  // r2 file ID
+  driveViewUrl  String?  // r2 webViewLink
+  driveDownloadUrl String? // r2 webContentLink
   
   metadata      Json?
   timestamp     DateTime @default(now())

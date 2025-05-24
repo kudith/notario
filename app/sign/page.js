@@ -1351,7 +1351,22 @@ export default function SignPage() {
           <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             {signingProgress >= 100 && !isProcessing && (
               <Button
-                onClick={() => setIsSignDialogOpen(false)}
+                onClick={() => {
+                  // Close the dialog
+                  setIsSignDialogOpen(false);
+                  
+                  // Open document URL in a new tab
+                  const documentUrl = driveViewUrl || signedPdfUrl;
+                  if (documentUrl) {
+                    window.open(documentUrl, '_blank', 'noopener,noreferrer');
+                  } else if (certificateId) {
+                    // Fallback if direct URL not available but we have certificate ID
+                    window.open(`/api/documents/view?certificateId=${certificateId}`, '_blank', 'noopener,noreferrer');
+                  }
+                  
+                  // Switch to download tab 
+                  setActiveTab("download");
+                }}
                 className="w-full sm:w-auto"
               >
                 View Document
