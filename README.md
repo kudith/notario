@@ -68,8 +68,7 @@ Notario stands out by supporting two industry-standard digital signature algorit
 
 ### Algorithm Selection
 Users can choose their preferred algorithm:
-- Select algorithm during account setup
-- Change algorithm in profile settings
+- Select or change algorithm in security tabs(dashboard)
 - Override algorithm selection during document signing
 - View algorithm information in document verification
 
@@ -81,7 +80,6 @@ Notario leverages Google's Gemini AI to automatically analyze documents and extr
 - **Key Information Extraction**: Detects document numbers, issue dates, expiration dates, and important metadata
 - **Party Identification**: Recognizes parties involved in the document and their roles
 - **Summary Generation**: Creates concise document summaries for quick understanding
-- **QR Placement Optimization**: Determines the best location for QR code placement
 - **Keyword Extraction**: Identifies and tags important keywords for document categorization
 
 The AI analysis enhances the signing process by providing context and ensuring verification elements are placed appropriately.
